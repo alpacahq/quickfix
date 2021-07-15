@@ -54,7 +54,7 @@ func (f sqlStoreFactory) Create(sessionID SessionID) (msgStore MessageStore, err
 			return nil, err
 		}
 	}
-	sqlConnMaxIdle := 100
+	sqlConnMaxIdle := 10
 	if sessionSettings.HasSetting(config.SQLStoreConnMaxIdle) {
 		sqlConnMaxIdle, err = sessionSettings.IntSetting(config.SQLStoreConnMaxIdle)
 		if err != nil {
