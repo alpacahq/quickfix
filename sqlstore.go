@@ -22,6 +22,12 @@ type sqlStore struct {
 	db                 *gorm.DB
 }
 
+type dbSettings struct {
+	connMaxLifetime time.Duration
+	connMaxIdle     int
+	connMaxOpen     int
+}
+
 // NewSQLStoreFactory returns a sql-based implementation of MessageStoreFactory
 func NewSQLStoreFactory(settings *Settings) MessageStoreFactory {
 	return sqlStoreFactory{settings: settings}
@@ -48,23 +54,44 @@ func (f sqlStoreFactory) Create(sessionID SessionID) (msgStore MessageStore, err
 			return nil, err
 		}
 	}
-	return newSQLStore(sessionID, sqlDriver, sqlDataSourceName, sqlConnMaxLifetime)
+	sqlConnMaxIdle := 100
+	if sessionSettings.HasSetting(config.SQLStoreConnMaxIdle) {
+		sqlConnMaxIdle, err = sessionSettings.IntSetting(config.SQLStoreConnMaxIdle)
+		if err != nil {
+			return nil, err
+		}
+	}
+	sqlConnMaxOpen := 100
+	if sessionSettings.HasSetting(config.SQLStoreConnMaxOpen) {
+		sqlConnMaxOpen, err = sessionSettings.IntSetting(config.SQLStoreConnMaxOpen)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return newSQLStore(sessionID, sqlDriver, sqlDataSourceName, dbSettings{
+		connMaxLifetime: sqlConnMaxLifetime,
+		connMaxIdle:     sqlConnMaxIdle,
+		connMaxOpen:     sqlConnMaxOpen,
+	})
 }
 
-func newSQLStore(sessionID SessionID, driver string, dataSourceName string, connMaxLifetime time.Duration) (store *sqlStore, err error) {
+func newSQLStore(sessionID SessionID, driver string, dataSourceName string, dbs dbSettings) (store *sqlStore, err error) {
 	store = &sqlStore{
 		sessionID:          sessionID,
 		cache:              &memoryStore{},
 		sqlDriver:          driver,
 		sqlDataSourceName:  dataSourceName,
-		sqlConnMaxLifetime: connMaxLifetime,
+		sqlConnMaxLifetime: dbs.connMaxLifetime,
 	}
 	store.cache.Reset()
 
 	if store.db, err = gorm.Open(store.sqlDriver, store.sqlDataSourceName); err != nil {
 		return nil, err
 	}
-	store.db.DB().SetConnMaxLifetime(store.sqlConnMaxLifetime)
+	store.db.DB().SetConnMaxLifetime(dbs.connMaxLifetime)
+	store.db.DB().SetMaxIdleConns(dbs.connMaxIdle)
+	store.db.DB().SetMaxOpenConns(dbs.connMaxOpen)
 
 	if err = store.db.DB().Ping(); err != nil { // ensure immediate connection
 		return nil, err
