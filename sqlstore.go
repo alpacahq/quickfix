@@ -18,7 +18,6 @@ type sqlStore struct {
 	cache              *memoryStore
 	sqlDriver          string
 	sqlDataSourceName  string
-	sqlConnMaxLifetime time.Duration
 	db                 *gorm.DB
 }
 
@@ -82,7 +81,6 @@ func newSQLStore(sessionID SessionID, driver string, dataSourceName string, dbs 
 		cache:              &memoryStore{},
 		sqlDriver:          driver,
 		sqlDataSourceName:  dataSourceName,
-		sqlConnMaxLifetime: dbs.connMaxLifetime,
 	}
 	store.cache.Reset()
 
