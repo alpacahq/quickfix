@@ -14,11 +14,11 @@ type sqlStoreFactory struct {
 }
 
 type sqlStore struct {
-	sessionID          SessionID
-	cache              *memoryStore
-	sqlDriver          string
-	sqlDataSourceName  string
-	db                 *gorm.DB
+	sessionID         SessionID
+	cache             *memoryStore
+	sqlDriver         string
+	sqlDataSourceName string
+	db                *gorm.DB
 }
 
 type dbSettings struct {
@@ -77,10 +77,10 @@ func (f sqlStoreFactory) Create(sessionID SessionID) (msgStore MessageStore, err
 
 func newSQLStore(sessionID SessionID, driver string, dataSourceName string, dbs dbSettings) (store *sqlStore, err error) {
 	store = &sqlStore{
-		sessionID:          sessionID,
-		cache:              &memoryStore{},
-		sqlDriver:          driver,
-		sqlDataSourceName:  dataSourceName,
+		sessionID:         sessionID,
+		cache:             &memoryStore{},
+		sqlDriver:         driver,
+		sqlDataSourceName: dataSourceName,
 	}
 	store.cache.Reset()
 
