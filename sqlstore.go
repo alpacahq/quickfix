@@ -6,7 +6,9 @@ import (
 	"time"
 
 	"github.com/alpacahq/quickfix/config"
-	"github.com/jinzhu/gorm"
+	"gorm.io/driver/postgres"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 type sqlStoreFactory struct {
@@ -75,25 +77,44 @@ func (f sqlStoreFactory) Create(sessionID SessionID) (msgStore MessageStore, err
 	})
 }
 
-func newSQLStore(sessionID SessionID, driver string, dataSourceName string, dbs dbSettings) (store *sqlStore, err error) {
-	store = &sqlStore{
+func newSQLStore(sessionID SessionID, driver string, dataSourceName string, dbs dbSettings) (*sqlStore, error) {
+	var dialector gorm.Dialector
+	switch driver {
+	case "postgres":
+		dialector = postgres.Open(dataSourceName)
+	case "sqlite", "sqlite3":
+		dialector = sqlite.Open(dataSourceName)
+	default:
+		return nil, fmt.Errorf("unsupported sql driver: %s", driver)
+	}
+
+	db, err := gorm.Open(dialector)
+	if err != nil {
+		return nil, err
+	}
+
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, err
+	}
+
+	sqlDB.SetConnMaxLifetime(dbs.connMaxLifetime)
+	sqlDB.SetMaxIdleConns(dbs.connMaxIdle)
+	sqlDB.SetMaxOpenConns(dbs.connMaxOpen)
+
+	if err = sqlDB.Ping(); err != nil { // ensure immediate connection
+		return nil, err
+	}
+
+	store := &sqlStore{
 		sessionID:         sessionID,
 		cache:             &memoryStore{},
 		sqlDriver:         driver,
 		sqlDataSourceName: dataSourceName,
+		db:                db,
 	}
 	store.cache.Reset()
 
-	if store.db, err = gorm.Open(store.sqlDriver, store.sqlDataSourceName); err != nil {
-		return nil, err
-	}
-	store.db.DB().SetConnMaxLifetime(dbs.connMaxLifetime)
-	store.db.DB().SetMaxIdleConns(dbs.connMaxIdle)
-	store.db.DB().SetMaxOpenConns(dbs.connMaxOpen)
-
-	if err = store.db.DB().Ping(); err != nil { // ensure immediate connection
-		return nil, err
-	}
 	if err = store.populateCache(); err != nil {
 		return nil, err
 	}
@@ -287,7 +308,11 @@ func (store *sqlStore) GetMessages(beginSeqNum, endSeqNum int) ([][]byte, error)
 // Close closes the store's database connection
 func (store *sqlStore) Close() error {
 	if store.db != nil {
-		store.db.Close()
+		sqlDB, err := store.db.DB()
+		if err != nil {
+			return err
+		}
+		sqlDB.Close()
 		store.db = nil
 	}
 	return nil

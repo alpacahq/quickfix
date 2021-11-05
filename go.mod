@@ -1,21 +1,31 @@
 module github.com/alpacahq/quickfix
 
+go 1.17
+
 require (
-	cloud.google.com/go v0.26.0 // indirect
+	github.com/shopspring/decimal v1.3.1
+	github.com/stretchr/testify v1.7.0
+	gorm.io/driver/postgres v1.2.1
+	gorm.io/driver/sqlite v1.2.3
+	gorm.io/gorm v1.22.2
+)
+
+require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/denisenkom/go-mssqldb v0.0.0-20180824013952-8fac8b954edb // indirect
-	github.com/erikstmartin/go-testdb v0.0.0-20160219214506-8d10e4a1bae5 // indirect
-	github.com/go-sql-driver/mysql v1.4.0 // indirect
-	github.com/google/go-cmp v0.2.0 // indirect
-	github.com/jinzhu/gorm v1.9.1
-	github.com/jinzhu/inflection v0.0.0-20180308033659-04140366298a // indirect
-	github.com/jinzhu/now v0.0.0-20180511015916-ed742868f2ae // indirect
-	github.com/lib/pq v1.0.0 // indirect
-	github.com/mattn/go-sqlite3 v1.9.0
+	github.com/jackc/chunkreader/v2 v2.0.1 // indirect
+	github.com/jackc/pgconn v1.10.0 // indirect
+	github.com/jackc/pgio v1.0.0 // indirect
+	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgproto3/v2 v2.1.1 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20200714003250-2b9c44734f2b // indirect
+	github.com/jackc/pgtype v1.8.1 // indirect
+	github.com/jackc/pgx/v4 v4.13.0 // indirect
+	github.com/jinzhu/inflection v1.0.0 // indirect
+	github.com/jinzhu/now v1.1.2 // indirect
+	github.com/mattn/go-sqlite3 v1.14.9 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/shopspring/decimal v0.0.0-20180709203117-cd690d0c9e24
-	github.com/stretchr/objx v0.1.1 // indirect
-	github.com/stretchr/testify v1.2.2
-	golang.org/x/crypto v0.0.0-20180820150726-614d502a4dac // indirect
-	google.golang.org/appengine v1.1.0 // indirect
+	github.com/stretchr/objx v0.2.0 // indirect
+	golang.org/x/crypto v0.0.0-20210921155107-089bfa567519 // indirect
+	golang.org/x/text v0.3.7 // indirect
+	gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c // indirect
 )

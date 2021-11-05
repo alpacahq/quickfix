@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jinzhu/gorm"
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 // SqlStoreTestSuite runs all tests in the MessageStoreTestSuite against the SqlStore implementation
@@ -30,7 +30,7 @@ func (suite *SQLStoreTestSuite) SetupTest() {
 	sqlDsn := path.Join(suite.sqlStoreRootPath, fmt.Sprintf("%d.db", time.Now().UnixNano()))
 
 	// create tables
-	db, err := gorm.Open(sqlDriver, sqlDsn)
+	db, err := gorm.Open(sqlite.Open(sqlDsn))
 	require.Nil(suite.T(), err)
 	ddlFnames, err := filepath.Glob(fmt.Sprintf("_sql/%s/*.sql", sqlDriver))
 	require.Nil(suite.T(), err)
