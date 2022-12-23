@@ -43,7 +43,6 @@ type session struct {
 	transportDataDictionary *datadictionary.DataDictionary
 	appDataDictionary       *datadictionary.DataDictionary
 
-	messagePool
 	timestampPrecision TimestampPrecision
 }
 
@@ -664,14 +663,6 @@ type fixIn struct {
 	receiveTime time.Time
 }
 
-func (s *session) returnToPool(msg *Message) {
-	s.messagePool.Put(msg)
-	if msg.rawMessage != nil {
-		bufferPool.Put(msg.rawMessage)
-		msg.rawMessage = nil
-	}
-}
-
 func (s *session) onDisconnect() {
 	s.log.OnEvent("Disconnected")
 	if s.ResetOnDisconnect {
@@ -724,12 +715,34 @@ func (s *session) onAdmin(msg interface{}) {
 
 func (s *session) run() {
 	s.Start(s)
+	var stopChan = make(chan struct{})
+	s.stateTimer = internal.NewEventTimer(func() {
+		select {
+		//deadlock in write to chan s.sessionEvent after s.Stopped()==true and end of loop session.go:766 because no reader of chan s.sessionEvent
+		case s.sessionEvent <- internal.NeedHeartbeat:
+		case <-stopChan:
+		}
+	})
+	s.peerTimer = internal.NewEventTimer(func() {
+		select {
+		//deadlock in write to chan s.sessionEvent after s.Stopped()==true and end of loop session.go:766 because no reader of chan s.sessionEvent
+		case s.sessionEvent <- internal.PeerTimeout:
+		case <-stopChan:
+		}
 
-	s.stateTimer = internal.NewEventTimer(func() { s.sessionEvent <- internal.NeedHeartbeat })
-	s.peerTimer = internal.NewEventTimer(func() { s.sessionEvent <- internal.PeerTimeout })
+	})
+
+	// Without this sleep the ticker will be aligned at the millisecond which
+	// corresponds to the creation of the session. If the session creation
+	// happened at 07:00:00.678 and the session StartTime is 07:30:00, any new
+	// connection received between 07:30:00.000 and 07:30:00.677 will be
+	// rejected. Aligning the ticker with a round second fixes that.
+	time.Sleep(time.Until(time.Now().Truncate(time.Second).Add(time.Second)))
+
 	ticker := time.NewTicker(time.Second)
 
 	defer func() {
+		close(stopChan)
 		s.stateTimer.Stop()
 		s.peerTimer.Stop()
 		ticker.Stop()
