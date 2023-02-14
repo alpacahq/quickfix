@@ -3,7 +3,6 @@ package quickfix
 import (
 	"bytes"
 	"sort"
-	"sync"
 	"time"
 )
 
@@ -40,7 +39,6 @@ func (t tagSort) Less(i, j int) bool { return t.compare(t.tags[i], t.tags[j]) }
 type FieldMap struct {
 	tagLookup map[Tag]field
 	tagSort
-	rwLock *sync.RWMutex
 }
 
 // ascending tags
@@ -51,16 +49,12 @@ func (m *FieldMap) init() {
 }
 
 func (m *FieldMap) initWithOrdering(ordering tagOrder) {
-	m.rwLock = &sync.RWMutex{}
 	m.tagLookup = make(map[Tag]field)
 	m.compare = ordering
 }
 
 // Tags returns all of the Field Tags in this FieldMap
 func (m FieldMap) Tags() []Tag {
-	m.rwLock.RLock()
-	defer m.rwLock.RUnlock()
-
 	tags := make([]Tag, 0, len(m.tagLookup))
 	for t := range m.tagLookup {
 		tags = append(tags, t)
@@ -76,17 +70,12 @@ func (m FieldMap) Get(parser Field) MessageRejectError {
 
 // Has returns true if the Tag is present in this FieldMap
 func (m FieldMap) Has(tag Tag) bool {
-	m.rwLock.RLock()
-	defer m.rwLock.RUnlock()
 	_, ok := m.tagLookup[tag]
 	return ok
 }
 
 // GetField parses of a field with Tag tag. Returned reject may indicate the field is not present, or the field value is invalid.
 func (m FieldMap) GetField(tag Tag, parser FieldValueReader) MessageRejectError {
-	m.rwLock.RLock()
-	defer m.rwLock.RUnlock()
-
 	f, ok := m.tagLookup[tag]
 	if !ok {
 		return ConditionallyRequiredFieldMissing(tag)
@@ -101,9 +90,6 @@ func (m FieldMap) GetField(tag Tag, parser FieldValueReader) MessageRejectError 
 
 // GetBytes is a zero-copy GetField wrapper for []bytes fields
 func (m FieldMap) GetBytes(tag Tag) ([]byte, MessageRejectError) {
-	m.rwLock.RLock()
-	defer m.rwLock.RUnlock()
-
 	f, ok := m.tagLookup[tag]
 	if !ok {
 		return nil, ConditionallyRequiredFieldMissing(tag)
@@ -138,9 +124,6 @@ func (m FieldMap) GetInt(tag Tag) (int, MessageRejectError) {
 
 // GetTime is a GetField wrapper for utc timestamp fields
 func (m FieldMap) GetTime(tag Tag) (t time.Time, err MessageRejectError) {
-	m.rwLock.RLock()
-	defer m.rwLock.RUnlock()
-
 	bytes, err := m.GetBytes(tag)
 	if err != nil {
 		return
@@ -165,9 +148,6 @@ func (m FieldMap) GetString(tag Tag) (string, MessageRejectError) {
 
 // GetGroup is a Get function specific to Group Fields.
 func (m FieldMap) GetGroup(parser FieldGroupReader) MessageRejectError {
-	m.rwLock.RLock()
-	defer m.rwLock.RUnlock()
-
 	f, ok := m.tagLookup[parser.Tag()]
 	if !ok {
 		return ConditionallyRequiredFieldMissing(parser.Tag())
@@ -213,43 +193,18 @@ func (m *FieldMap) SetString(tag Tag, value string) *FieldMap {
 
 // Clear purges all fields from field map
 func (m *FieldMap) Clear() {
-	m.rwLock.Lock()
-	defer m.rwLock.Unlock()
-
 	m.tags = m.tags[0:0]
 	for k := range m.tagLookup {
 		delete(m.tagLookup, k)
 	}
 }
 
-//CopyInto overwrites the given FieldMap with this one
-func (m *FieldMap) CopyInto(to *FieldMap) {
-	m.rwLock.RLock()
-	defer m.rwLock.RUnlock()
-
-	to.tagLookup = make(map[Tag]field)
-	for tag, f := range m.tagLookup {
-		clone := make(field, 1)
-		clone[0] = f[0]
-		to.tagLookup[tag] = clone
-	}
-	to.tags = make([]Tag, len(m.tags))
-	copy(to.tags, m.tags)
-	to.compare = m.compare
-}
-
 // DeleteTag removes a tag's value from field map, if present
 func (m *FieldMap) DeleteTag(tag Tag) {
-	m.rwLock.RLock()
-	defer m.rwLock.RUnlock()
-
 	delete(m.tagLookup, tag)
 }
 
 func (m *FieldMap) add(f field) {
-	m.rwLock.Lock()
-	defer m.rwLock.Unlock()
-
 	t := fieldTag(f)
 	if _, ok := m.tagLookup[t]; !ok {
 		m.tags = append(m.tags, t)
@@ -259,9 +214,6 @@ func (m *FieldMap) add(f field) {
 }
 
 func (m *FieldMap) getOrCreate(tag Tag) field {
-	m.rwLock.Lock()
-	defer m.rwLock.Unlock()
-
 	if f, ok := m.tagLookup[tag]; ok {
 		f = f[:1]
 		return f
@@ -282,9 +234,6 @@ func (m *FieldMap) Set(field FieldWriter) *FieldMap {
 
 // SetGroup is a setter specific to group fields
 func (m *FieldMap) SetGroup(field FieldGroupWriter) *FieldMap {
-	m.rwLock.Lock()
-	defer m.rwLock.Unlock()
-
 	_, ok := m.tagLookup[field.Tag()]
 	if !ok {
 		m.tags = append(m.tags, field.Tag())
@@ -299,9 +248,6 @@ func (m *FieldMap) sortedTags() []Tag {
 }
 
 func (m FieldMap) write(buffer *bytes.Buffer) {
-	m.rwLock.Lock()
-	defer m.rwLock.Unlock()
-
 	for _, tag := range m.sortedTags() {
 		if f, ok := m.tagLookup[tag]; ok {
 			writeField(f, buffer)
@@ -310,9 +256,6 @@ func (m FieldMap) write(buffer *bytes.Buffer) {
 }
 
 func (m FieldMap) total() int {
-	m.rwLock.RLock()
-	defer m.rwLock.RUnlock()
-
 	total := 0
 	for _, fields := range m.tagLookup {
 		for _, tv := range fields {
@@ -328,9 +271,6 @@ func (m FieldMap) total() int {
 }
 
 func (m FieldMap) length() int {
-	m.rwLock.RLock()
-	defer m.rwLock.RUnlock()
-
 	length := 0
 	for _, fields := range m.tagLookup {
 		for _, tv := range fields {

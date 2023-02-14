@@ -5,12 +5,15 @@ import (
 	"errors"
 	"io"
 	"time"
+
+	"github.com/alpacahq/quickfix/internal"
 )
 
 const (
 	defaultBufSize = 4096
 )
 
+var bufferPool internal.BufferPool
 
 type parser struct {
 	//buffer is a slice of bigBuffer
@@ -142,7 +145,7 @@ func (p *parser) ReadMessage() (msgBytes *bytes.Buffer, err error) {
 		return
 	}
 
-	msgBytes = new(bytes.Buffer)
+	msgBytes = bufferPool.Get()
 	msgBytes.Reset()
 	msgBytes.Write(p.buffer[:index])
 	p.buffer = p.buffer[index:]
