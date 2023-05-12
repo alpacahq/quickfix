@@ -22,7 +22,7 @@ lint:
 	golint .
 
 test: 
-	go test -v -cover . ./datadictionary ./internal
+	go test -v -cover . ./datadictionary ./internal ./enum
 
 _build_all: 
 	go build -v `go list ./...`
