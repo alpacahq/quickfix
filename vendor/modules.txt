@@ -1,0 +1,45 @@
+# cloud.google.com/go v0.26.0
+## explicit
+# github.com/davecgh/go-spew v1.1.1
+## explicit
+github.com/davecgh/go-spew/spew
+# github.com/denisenkom/go-mssqldb v0.0.0-20180824013952-8fac8b954edb
+## explicit
+# github.com/erikstmartin/go-testdb v0.0.0-20160219214506-8d10e4a1bae5
+## explicit
+# github.com/go-sql-driver/mysql v1.4.0
+## explicit
+# github.com/google/go-cmp v0.2.0
+## explicit
+# github.com/jinzhu/gorm v1.9.1
+## explicit
+github.com/jinzhu/gorm
+# github.com/jinzhu/inflection v0.0.0-20180308033659-04140366298a
+## explicit
+github.com/jinzhu/inflection
+# github.com/jinzhu/now v0.0.0-20180511015916-ed742868f2ae
+## explicit
+# github.com/lib/pq v1.0.0
+## explicit
+# github.com/mattn/go-sqlite3 v1.9.0
+## explicit
+github.com/mattn/go-sqlite3
+# github.com/pmezard/go-difflib v1.0.0
+## explicit
+github.com/pmezard/go-difflib/difflib
+# github.com/shopspring/decimal v0.0.0-20180709203117-cd690d0c9e24
+## explicit
+github.com/shopspring/decimal
+# github.com/stretchr/objx v0.1.1
+## explicit
+github.com/stretchr/objx
+# github.com/stretchr/testify v1.2.2
+## explicit
+github.com/stretchr/testify/assert
+github.com/stretchr/testify/mock
+github.com/stretchr/testify/require
+github.com/stretchr/testify/suite
+# golang.org/x/crypto v0.0.0-20180820150726-614d502a4dac
+## explicit
+# google.golang.org/appengine v1.1.0
+## explicit
