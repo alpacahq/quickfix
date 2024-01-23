@@ -24,8 +24,10 @@ func init() {
 		"quickfixType":                          quickfixType,
 		"quickfixValueType":                     quickfixValueType,
 		"getGlobalFieldType":                    getGlobalFieldType,
+		"collectStandardImports":                collectStandardImports,
 		"collectExtraImports":                   collectExtraImports,
 		"checkIfDecimalImportRequiredForFields": checkIfDecimalImportRequiredForFields,
+		"checkIfTimeImportRequiredForFields":    checkIfTimeImportRequiredForFields,
 		"checkIfEnumImportRequired":             checkIfEnumImportRequired,
 	}
 
@@ -57,7 +59,7 @@ Set{{ .Name }}(f {{ .Name }}RepeatingGroup){
 
 {{ define "setters" }}
 {{ range .Fields }}
-//Set{{ .Name }} sets {{ .Name }}, Tag {{ .Tag }}
+// Set{{ .Name }} sets {{ .Name }}, Tag {{ .Tag }}.
 func ({{ template "receiver" }} {{ $.Name }}) {{ if .IsGroup }}{{ template "groupsetter" . }}{{ else }}{{ template "fieldsetter" . }}{{ end }}
 {{ end }}{{ end }}
 
@@ -97,13 +99,13 @@ Get{{ .Name }}() ({{ .Name }}RepeatingGroup, quickfix.MessageRejectError) {
 
 {{ define "getters" }}
 {{ range .Fields }}
-//Get{{ .Name }} gets {{ .Name }}, Tag {{ .Tag }}
+// Get{{ .Name }} gets {{ .Name }}, Tag {{ .Tag }}.
 func ({{ template "receiver" }} {{ $.Name }}) {{if .IsGroup}}{{ template "groupgetter" . }}{{ else }}{{ template "fieldvaluegetter" .}}{{ end }}
 {{ end }}{{ end }}
 
 {{ define "hasers" }}
 {{range .Fields}}
-//Has{{ .Name}} returns true if {{ .Name}} is present, Tag {{ .Tag}}
+// Has{{ .Name}} returns true if {{ .Name}} is present, Tag {{ .Tag}}.
 func ({{ template "receiver" }} {{ $.Name }}) Has{{ .Name}}() bool {
 	return {{ template "receiver" }}.Has(tag.{{ .Name}})
 }
@@ -111,7 +113,14 @@ func ({{ template "receiver" }} {{ $.Name }}) Has{{ .Name}}() bool {
 
 {{ define "group_template" }}
 quickfix.GroupTemplate{
-{{- range $index, $field := . }}{{if $index}},{{end}}{{if $field.IsGroup }}New{{ $field.Name }}RepeatingGroup(){{else}}quickfix.GroupElement(tag.{{$field.Name}}){{ end }}{{ end }} }
+{{- range $index, $field := . }}
+	{{- if $field.IsGroup }}
+	New{{ $field.Name }}RepeatingGroup(),
+	{{- else}}
+	quickfix.GroupElement(tag.{{$field.Name}}),
+	{{- end }}
+{{- end }}
+}
 {{- end }}
 
 {{ define "field_args" }}
@@ -121,9 +130,9 @@ quickfix.GroupTemplate{
 {{ define "groups" }}
 {{ range .Fields }}
 {{ if .IsGroup }}
-//{{ .Name }} is a repeating group element, Tag {{ .Tag }}
+// {{ .Name }} is a repeating group element, Tag {{ .Tag }}.
 type {{ .Name }} struct {
-	quickfix.Group
+	*quickfix.Group
 }
 
 {{ template "setters" .}}
@@ -131,24 +140,28 @@ type {{ .Name }} struct {
 {{ template "hasers" . }}
 {{ template "groups" . }}
 
-//{{ .Name }}RepeatingGroup is a repeating group, Tag {{ .Tag }}
+// {{ .Name }}RepeatingGroup is a repeating group, Tag {{ .Tag }}.
 type {{ .Name }}RepeatingGroup struct {
 	*quickfix.RepeatingGroup
 }
 
-//New{{ .Name }}RepeatingGroup returns an initialized, {{ .Name }}RepeatingGroup
+// New{{ .Name }}RepeatingGroup returns an initialized, {{ .Name }}RepeatingGroup.
 func New{{ .Name }}RepeatingGroup() {{ .Name }}RepeatingGroup {
 	return {{ .Name }}RepeatingGroup{
-		quickfix.NewRepeatingGroup(tag.{{ .Name }}, {{ template "group_template" .Fields }})}
+		quickfix.NewRepeatingGroup(
+			tag.{{ .Name }},
+			{{- template "group_template" .Fields }},
+		),
+	}
 }
 
-//Add create and append a new {{ .Name }} to this group
+// Add create and append a new {{ .Name }} to this group.
 func ({{ template "receiver" }} {{ .Name }}RepeatingGroup) Add() {{ .Name }} {
 	g := {{ template "receiver" }}.RepeatingGroup.Add()
 	return {{ .Name }}{g}
 }
 
-//Get returns the ith {{ .Name }} in the {{ .Name }}RepeatinGroup
+// Get returns the ith {{ .Name }} in the {{ .Name }}RepeatinGroup.
 func ({{ template "receiver" }} {{ .Name}}RepeatingGroup) Get(i int) {{ .Name }} {
 	return {{ .Name }}{ {{ template "receiver" }}.RepeatingGroup.Get(i) }
 }
@@ -160,28 +173,33 @@ func ({{ template "receiver" }} {{ .Name}}RepeatingGroup) Get(i int) {{ .Name }}
 {{ define "receiver" }}h{{ end }}
 package {{ .Package }}
 
-import(
+import (
+	{{- if collectStandardImports .MessageDef }}
+	{{- range collectStandardImports .MessageDef }}
+	"{{ . }}"
+	{{- end }}{{ "\n" }}
+	{{- end }}
+	{{- if collectExtraImports .MessageDef }}
 	{{- range collectExtraImports .MessageDef }}
 	"{{ . }}"
+	{{- end }}{{ "\n" }}
 	{{- end }}
-
-
 	"github.com/quickfixgo/quickfix"
 	{{- if checkIfEnumImportRequired .MessageDef}}
-	"github.com/quickfixgo/quickfix/enum"
+	"{{ importRootPath }}/enum"
 	{{- end }}
-	"github.com/quickfixgo/quickfix/field"
-	"github.com/quickfixgo/quickfix/tag"
+	"{{ importRootPath }}/field"
+	"{{ importRootPath }}/tag"
 )
 
-//Header is the {{ .Package }} Header type
+// Header is the {{ .Package }} Header type.
 type Header struct {
-	quickfix.Header
+	*quickfix.Header
 }
 
-//NewHeader returns a new, initialized Header instance
-func NewHeader() (h Header) {
-	h.Init()
+// NewHeader returns a new, initialized Header instance.
+func NewHeader(header *quickfix.Header) (h Header) {
+	h.Header = header
 	h.SetBeginString("{{ beginString .FIXSpec }}")
 	return
 }
@@ -196,22 +214,28 @@ func NewHeader() (h Header) {
 {{ define "receiver" }}t{{ end }}
 package {{ .Package }}
 
-import(
+import (
+	{{- if collectStandardImports .MessageDef }}
+	{{- range collectStandardImports .MessageDef }}
+	"{{ . }}"
+	{{- end }}{{ "\n" }}
+	{{- end }}
+	{{- if collectExtraImports .MessageDef }}
 	{{- range collectExtraImports .MessageDef }}
 	"{{ . }}"
+	{{- end }}{{ "\n" }}
 	{{- end }}
-
 	"github.com/quickfixgo/quickfix"
 	{{- if checkIfEnumImportRequired .MessageDef}}
-	"github.com/quickfixgo/quickfix/enum"
+	"{{ importRootPath }}/enum"
 	{{- end }}
-	"github.com/quickfixgo/quickfix/field"
-	"github.com/quickfixgo/quickfix/tag"
+	"{{ importRootPath }}/field"
+	"{{ importRootPath }}/tag"
 )
 
-//Trailer is the {{ .Package }} Trailer type
+// Trailer is the {{ .Package }} Trailer type.
 type Trailer struct {
-	quickfix.Trailer
+	*quickfix.Trailer
 }
 
 {{ template "setters" .}}
@@ -224,12 +248,17 @@ type Trailer struct {
 {{ define "receiver" }}m{{ end }}
 package {{ .Package }}
 
-import(
-	"time"
+import (
+	{{- if collectStandardImports .MessageDef }}
+	{{- range collectStandardImports .MessageDef }}
+	"{{ . }}"
+	{{- end }}{{ "\n" }}
+	{{- end }}
+	{{- if collectExtraImports .MessageDef }}
 	{{- range collectExtraImports .MessageDef }}
 	"{{ . }}"
+	{{- end }}{{ "\n" }}
 	{{- end }}
-
 	"github.com/quickfixgo/quickfix"
 	{{- if checkIfEnumImportRequired .MessageDef}}
 	"{{ importRootPath }}/enum"
@@ -239,41 +268,36 @@ import(
 	"{{ importRootPath }}/tag"
 )
 
-//{{ .Name }} is the {{ .FIXPackage }} {{ .Name }} type, MsgType = {{ .MsgType }}
+// {{ .Name }} is the {{ .FIXPackage }} {{ .Name }} type, MsgType = {{ .MsgType }}.
 type {{ .Name }} struct {
 	{{ .TransportPackage }}.Header
-	quickfix.Body
+	*quickfix.Body
 	{{ .TransportPackage }}.Trailer
-	//ReceiveTime is the time that this message was read from the socket connection
-	ReceiveTime time.Time
+	Message *quickfix.Message
 }
 
-//FromMessage creates a {{ .Name }} from a quickfix.Message instance
-func FromMessage(m quickfix.Message) {{ .Name }} {
+// FromMessage creates a {{ .Name }} from a quickfix.Message instance.
+func FromMessage(m *quickfix.Message) {{ .Name }} {
 	return {{ .Name }}{
-		Header: {{ .TransportPackage }}.Header{ Header: m.Header },
-		Body: m.Body,
-		Trailer: {{ .TransportPackage }}.Trailer{ Trailer: m.Trailer },
-		ReceiveTime: m.ReceiveTime,
+		Header: {{ .TransportPackage}}.Header{&m.Header},
+		Body: &m.Body,
+		Trailer: {{ .TransportPackage}}.Trailer{&m.Trailer},
+		Message: m,
 	}
 }
 
-//ToMessage returns a quickfix.Message instance
-func (m {{ .Name }}) ToMessage() quickfix.Message {
-	return quickfix.Message {
-		Header: m.Header.Header,
-		Body: m.Body,
-		Trailer: m.Trailer.Trailer,
-		ReceiveTime: m.ReceiveTime,
-	}
+// ToMessage returns a quickfix.Message instance.
+func (m {{ .Name }}) ToMessage() *quickfix.Message {
+	return m.Message
 }
 
 {{ $required_fields := requiredFields .MessageDef -}}
-//New returns a {{ .Name }} initialized with the required fields for {{ .Name }}
+// New returns a {{ .Name }} initialized with the required fields for {{ .Name }}.
 func New({{template "field_args" $required_fields }}) (m {{ .Name }}) {
-	m.Header = {{ .TransportPackage }}.NewHeader()
-	m.Init()
-	m.Trailer.Init()
+	m.Message = quickfix.NewMessage()
+	m.Header = {{ .TransportPackage }}.NewHeader(&m.Message.Header)
+	m.Body = &m.Message.Body
+	m.Trailer.Trailer = &m.Message.Trailer
 
 	m.Header.Set(field.NewMsgType("{{ .MessageDef.MsgType }}"))
 	{{- range $required_fields }}
@@ -283,12 +307,12 @@ func New({{template "field_args" $required_fields }}) (m {{ .Name }}) {
 	return
 }
 
-//A RouteOut is the callback type that should be implemented for routing Message
+// A RouteOut is the callback type that should be implemented for routing Message.
 type RouteOut func(msg {{ .Name }}, sessionID quickfix.SessionID) quickfix.MessageRejectError
 
-//Route returns the beginstring, message type, and MessageRoute for this Message type
+// Route returns the beginstring, message type, and MessageRoute for this Message type.
 func Route(router RouteOut) (string, string, quickfix.MessageRoute) {
-	r:=func(msg quickfix.Message, sessionID quickfix.SessionID) quickfix.MessageRejectError {
+	r:=func(msg *quickfix.Message, sessionID quickfix.SessionID) quickfix.MessageRejectError {
 		return router(FromMessage(msg), sessionID)
 	}
 	return "{{ routerBeginString .FIXSpec }}", "{{ .MessageDef.MsgType }}", r
@@ -302,48 +326,55 @@ func Route(router RouteOut) (string, string, quickfix.MessageRoute) {
 
 	TagTemplate = template.Must(template.New("Tag").Parse(`
 package tag
-import("github.com/quickfixgo/quickfix")
+import "github.com/quickfixgo/quickfix"
 
 const (
 {{- range .}}
-{{ .Name }} quickfix.Tag =  {{ .Tag }}
+{{ .Name }} quickfix.Tag = {{ .Tag }}
 {{- end }}
 )
 	`))
 
 	FieldTemplate = template.Must(template.New("Field").Funcs(tmplFuncs).Parse(`
 package field
-import(
+import (
+	{{ if checkIfTimeImportRequiredForFields . }}"time"{{ end }}
+
+	{{ if checkIfDecimalImportRequiredForFields . }}"github.com/shopspring/decimal"{{ end }}
+
 	"github.com/quickfixgo/quickfix"
 	"{{ importRootPath }}/enum"
 	"{{ importRootPath }}/tag"
-{{ if checkIfDecimalImportRequiredForFields . }} "github.com/shopspring/decimal" {{ end }}
-	"time"
 )
 
 {{ range . }}
 {{- $base_type := quickfixType . -}}
 
 {{ if and .Enums (ne $base_type "FIXBoolean") }}
-//{{ .Name }}Field is a enum.{{ .Name }} field
+// {{ .Name }}Field is a enum.{{ .Name }} field.
 type {{ .Name }}Field struct { quickfix.FIXString }
 {{ else }}
-//{{ .Name }}Field is a {{ .Type }} field
+// {{ .Name }}Field is a {{ .Type }} field.
 type {{ .Name }}Field struct { quickfix.{{ $base_type }} }
 {{ end }}
 
-//Tag returns tag.{{ .Name }} ({{ .Tag }})
+// Tag returns tag.{{ .Name }} ({{ .Tag }}).
 func (f {{ .Name }}Field) Tag() quickfix.Tag { return tag.{{ .Name }} }
 
 {{ if eq $base_type "FIXUTCTimestamp" }}
-//New{{ .Name }} returns a new {{ .Name }}Field initialized with val
+// New{{ .Name }} returns a new {{ .Name }}Field initialized with val.
 func New{{ .Name }}(val time.Time) {{ .Name }}Field {
-	return {{ .Name }}Field{ quickfix.FIXUTCTimestamp{ Time: val } }
+	return New{{ .Name }}WithPrecision(val, quickfix.Millis)
 }
 
-//New{{ .Name }}NoMillis returns a new {{ .Name }}Field initialized with val without millisecs
+// New{{ .Name }}NoMillis returns a new {{ .Name }}Field initialized with val without millisecs.
 func New{{ .Name }}NoMillis(val time.Time) {{ .Name }}Field {
-	return {{ .Name }}Field{ quickfix.FIXUTCTimestamp{ Time: val, NoMillis: true } }
+	return New{{ .Name }}WithPrecision(val, quickfix.Seconds)
+}
+
+// New{{ .Name }}WithPrecision returns a new {{ .Name }}Field initialized with val of specified precision.
+func New{{ .Name }}WithPrecision(val time.Time, precision quickfix.TimestampPrecision) {{ .Name }}Field {
+	return {{ .Name }}Field{ quickfix.FIXUTCTimestamp{ Time: val, Precision: precision } }
 }
 
 {{ else if and  .Enums (ne $base_type "FIXBoolean") }}
@@ -351,12 +382,12 @@ func New{{ .Name }}(val enum.{{ .Name }}) {{ .Name }}Field {
 	return {{ .Name }}Field{ quickfix.FIXString(val) }
 }
 {{ else if eq $base_type "FIXDecimal" }}
-//New{{ .Name }} returns a new {{ .Name }}Field initialized with val and scale
+// New{{ .Name }} returns a new {{ .Name }}Field initialized with val and scale.
 func New{{ .Name }}(val decimal.Decimal, scale int32) {{ .Name }}Field {
 	return {{ .Name }}Field{ quickfix.FIXDecimal{ Decimal: val, Scale: scale} }
 }
 {{ else }}
-//New{{ .Name }} returns a new {{ .Name }}Field initialized with val
+// New{{ .Name }} returns a new {{ .Name }}Field initialized with val.
 func New{{ .Name }}(val {{ quickfixValueType $base_type }}) {{ .Name }}Field {
 	return {{ .Name }}Field{ quickfix.{{ $base_type }}(val) }
 }
@@ -387,7 +418,7 @@ func (f {{ .Name }}Field) Value() ({{ quickfixValueType $base_type }}) {
 package enum
 {{ range $ft := . }}
 {{ if $ft.Enums }}
-//Enum values for {{ $ft.Name }}
+// {{ $ft.Name }} field enumeration values.
 type {{ $ft.Name }} string
 const(
 {{ range $ft.Enums }}

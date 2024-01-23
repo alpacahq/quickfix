@@ -1,12 +1,28 @@
+// Copyright (c) quickfixengine.org  All rights reserved.
+//
+// This file may be distributed under the terms of the quickfixengine.org
+// license as defined by quickfixengine.org and appearing in the file
+// LICENSE included in the packaging of this file.
+//
+// This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING
+// THE WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A
+// PARTICULAR PURPOSE.
+//
+// See http://www.quickfixengine.org/LICENSE for licensing information.
+//
+// Contact ask@quickfixengine.org if any conditions of this licensing
+// are not clear to you.
+
 package quickfix
 
 import (
 	"time"
 
-	"github.com/quickfixgo/quickfix/enum"
-	"github.com/quickfixgo/quickfix/internal"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+
+	"github.com/quickfixgo/quickfix/internal"
 )
 
 type QuickFIXSuite struct {
@@ -20,8 +36,8 @@ type KnowsFieldMap interface {
 	GetField(Tag, FieldValueReader) MessageRejectError
 }
 
-func (s *QuickFIXSuite) MessageType(msgType enum.MsgType, msg Message) {
-	s.FieldEquals(tagMsgType, string(msgType), msg.Header)
+func (s *QuickFIXSuite) MessageType(msgType string, msg *Message) {
+	s.FieldEquals(tagMsgType, msgType, msg.Header)
 }
 
 func (s *QuickFIXSuite) FieldEquals(tag Tag, expectedValue interface{}, fieldMap KnowsFieldMap) {
@@ -46,12 +62,12 @@ func (s *QuickFIXSuite) FieldEquals(tag Tag, expectedValue interface{}, fieldMap
 	}
 }
 
-func (s *QuickFIXSuite) MessageEqualsBytes(expectedBytes []byte, msg Message) {
+func (s *QuickFIXSuite) MessageEqualsBytes(expectedBytes []byte, msg *Message) {
 	actualBytes := msg.build()
 	s.Equal(string(actualBytes), string(expectedBytes))
 }
 
-//MockStore wraps a memory store and mocks Refresh for convenience
+// MockStore wraps a memory store and mocks Refresh for convenience.
 type MockStore struct {
 	mock.Mock
 	memoryStore
@@ -64,9 +80,9 @@ func (s *MockStore) Refresh() error {
 type MockApp struct {
 	mock.Mock
 
-	decorateToAdmin func(Message)
-	lastToAdmin     Message
-	lastToApp       Message
+	decorateToAdmin func(*Message)
+	lastToAdmin     *Message
+	lastToApp       *Message
 }
 
 func (e *MockApp) OnCreate(sessionID SessionID) {
@@ -80,7 +96,7 @@ func (e *MockApp) OnLogout(sessionID SessionID) {
 	e.Called()
 }
 
-func (e *MockApp) FromAdmin(msg Message, sessionID SessionID) (reject MessageRejectError) {
+func (e *MockApp) FromAdmin(msg *Message, sessionID SessionID) (reject MessageRejectError) {
 	if err, ok := e.Called().Get(0).(MessageRejectError); ok {
 		return err
 	}
@@ -88,7 +104,7 @@ func (e *MockApp) FromAdmin(msg Message, sessionID SessionID) (reject MessageRej
 	return nil
 }
 
-func (e *MockApp) ToAdmin(msg Message, sessionID SessionID) {
+func (e *MockApp) ToAdmin(msg *Message, sessionID SessionID) {
 	e.Called()
 
 	if e.decorateToAdmin != nil {
@@ -98,12 +114,12 @@ func (e *MockApp) ToAdmin(msg Message, sessionID SessionID) {
 	e.lastToAdmin = msg
 }
 
-func (e *MockApp) ToApp(msg Message, sessionID SessionID) (err error) {
+func (e *MockApp) ToApp(msg *Message, sessionID SessionID) (err error) {
 	e.lastToApp = msg
 	return e.Called().Error(0)
 }
 
-func (e *MockApp) FromApp(msg Message, sessionID SessionID) (reject MessageRejectError) {
+func (e *MockApp) FromApp(msg *Message, sessionID SessionID) (reject MessageRejectError) {
 	if err, ok := e.Called().Get(0).(MessageRejectError); ok {
 		return err
 	}
@@ -123,33 +139,33 @@ func (m *MessageFactory) buildMessage(msgType string) *Message {
 	m.seqNum++
 	msg := NewMessage()
 	msg.Header.
-		SetField(tagBeginString, FIXString(string(enum.BeginStringFIX42))).
+		SetField(tagBeginString, FIXString(string(BeginStringFIX42))).
 		SetField(tagSenderCompID, FIXString("TW")).
 		SetField(tagTargetCompID, FIXString("ISLD")).
 		SetField(tagSendingTime, FIXUTCTimestamp{Time: time.Now()}).
 		SetField(tagMsgSeqNum, FIXInt(m.seqNum)).
 		SetField(tagMsgType, FIXString(msgType))
-	return &msg
+	return msg
 }
 
 func (m *MessageFactory) Logout() *Message {
-	return m.buildMessage(string(enum.MsgType_LOGOUT))
+	return m.buildMessage(string(msgTypeLogout))
 }
 
 func (m *MessageFactory) NewOrderSingle() *Message {
-	return m.buildMessage(string(enum.MsgType_ORDER_SINGLE))
+	return m.buildMessage("D")
 }
 
 func (m *MessageFactory) Heartbeat() *Message {
-	return m.buildMessage(string(enum.MsgType_HEARTBEAT))
+	return m.buildMessage(string(msgTypeHeartbeat))
 }
 
 func (m *MessageFactory) Logon() *Message {
-	return m.buildMessage(string(enum.MsgType_LOGON))
+	return m.buildMessage(string(msgTypeLogon))
 }
 
 func (m *MessageFactory) ResendRequest(beginSeqNo int) *Message {
-	msg := m.buildMessage(string(enum.MsgType_RESEND_REQUEST))
+	msg := m.buildMessage(string(msgTypeResendRequest))
 	msg.Body.SetField(tagBeginSeqNo, FIXInt(beginSeqNo))
 	msg.Body.SetField(tagEndSeqNo, FIXInt(0))
 
@@ -157,7 +173,7 @@ func (m *MessageFactory) ResendRequest(beginSeqNo int) *Message {
 }
 
 func (m *MessageFactory) SequenceReset(seqNo int) *Message {
-	msg := m.buildMessage(string(enum.MsgType_SEQUENCE_RESET))
+	msg := m.buildMessage(string(msgTypeSequenceReset))
 	msg.Body.SetField(tagNewSeqNo, FIXInt(seqNo))
 
 	return msg
@@ -205,13 +221,14 @@ func (s *SessionSuiteRig) Init() {
 		messageOut:   s.Receiver.sendChannel,
 		sessionEvent: make(chan internal.Event),
 	}
+	s.MaxLatency = 120 * time.Second
 }
 
 func (s *SessionSuiteRig) State(state sessionState) {
 	s.IsType(state, s.session.State, "session state should be %v", state)
 }
 
-func (s *SessionSuiteRig) MessageSentEquals(msg Message) {
+func (s *SessionSuiteRig) MessageSentEquals(msg *Message) {
 	msgBytes, ok := s.Receiver.LastMessage()
 	s.True(ok, "Should be connected")
 	s.NotNil(msgBytes, "Message should have been sent")
@@ -223,6 +240,7 @@ func (s *SessionSuiteRig) LastToAppMessageSent() {
 }
 
 func (s *SessionSuiteRig) LastToAdminMessageSent() {
+	require.NotNil(s.T(), s.MockApp.lastToAdmin, "No ToAdmin received")
 	s.MessageSentEquals(s.MockApp.lastToAdmin)
 }
 
@@ -276,7 +294,7 @@ func (s *SessionSuiteRig) NoMessagePersisted(seqNum int) {
 	s.Empty(persistedMessages, "The message should not be persisted")
 }
 
-func (s *SessionSuiteRig) MessagePersisted(msg Message) {
+func (s *SessionSuiteRig) MessagePersisted(msg *Message) {
 	var err error
 	seqNum, err := msg.Header.GetInt(tagMsgSeqNum)
 	s.Nil(err, "message should have seq num")

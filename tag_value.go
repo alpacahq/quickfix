@@ -1,3 +1,18 @@
+// Copyright (c) quickfixengine.org  All rights reserved.
+//
+// This file may be distributed under the terms of the quickfixengine.org
+// license as defined by quickfixengine.org and appearing in the file
+// LICENSE included in the packaging of this file.
+//
+// This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING
+// THE WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A
+// PARTICULAR PURPOSE.
+//
+// See http://www.quickfixengine.org/LICENSE for licensing information.
+//
+// Contact ask@quickfixengine.org if any conditions of this licensing
+// are not clear to you.
+
 package quickfix
 
 import (
@@ -6,48 +21,44 @@ import (
 	"strconv"
 )
 
-//TagValue is a low-level FIX field abstraction
+// TagValue is a low-level FIX field abstraction.
 type TagValue struct {
 	tag   Tag
 	value []byte
 	bytes []byte
 }
 
-//TagValues is a slice of TagValue
-type TagValues []TagValue
-
 func (tv *TagValue) init(tag Tag, value []byte) {
-	var buf bytes.Buffer
-	buf.WriteString(strconv.Itoa(int(tag)))
-	buf.WriteString("=")
-	buf.Write(value)
-	buf.WriteString("")
+	tv.bytes = strconv.AppendInt(nil, int64(tag), 10)
+	tv.bytes = append(tv.bytes, []byte("=")...)
+	tv.bytes = append(tv.bytes, value...)
+	tv.bytes = append(tv.bytes, []byte("")...)
 
 	tv.tag = tag
-	tv.bytes = buf.Bytes()
 	tv.value = value
 }
 
-func (tv *TagValue) parse(rawFieldBytes []byte) (err error) {
+func (tv *TagValue) parse(rawFieldBytes []byte) error {
 	sepIndex := bytes.IndexByte(rawFieldBytes, '=')
 
-	if sepIndex == -1 {
-		err = fmt.Errorf("tagValue.Parse: No '=' in '%s'", rawFieldBytes)
-		return
+	switch sepIndex {
+	case -1:
+		return fmt.Errorf("tagValue.Parse: No '=' in '%s'", rawFieldBytes)
+	case 0:
+		return fmt.Errorf("tagValue.Parse: No tag in '%s'", rawFieldBytes)
 	}
 
 	parsedTag, err := atoi(rawFieldBytes[:sepIndex])
-
 	if err != nil {
-		err = fmt.Errorf("tagValue.Parse: %s", err.Error())
-		return
+		return fmt.Errorf("tagValue.Parse: %s", err.Error())
 	}
 
 	tv.tag = Tag(parsedTag)
-	tv.value = rawFieldBytes[(sepIndex + 1):(len(rawFieldBytes) - 1)]
-	tv.bytes = rawFieldBytes
+	n := len(rawFieldBytes)
+	tv.value = rawFieldBytes[(sepIndex + 1):(n - 1):(n - 1)]
+	tv.bytes = rawFieldBytes[:n:n]
 
-	return
+	return nil
 }
 
 func (tv TagValue) String() string {

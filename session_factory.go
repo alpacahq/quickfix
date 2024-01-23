@@ -1,14 +1,30 @@
+// Copyright (c) quickfixengine.org  All rights reserved.
+//
+// This file may be distributed under the terms of the quickfixengine.org
+// license as defined by quickfixengine.org and appearing in the file
+// LICENSE included in the packaging of this file.
+//
+// This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING
+// THE WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A
+// PARTICULAR PURPOSE.
+//
+// See http://www.quickfixengine.org/LICENSE for licensing information.
+//
+// Contact ask@quickfixengine.org if any conditions of this licensing
+// are not clear to you.
+
 package quickfix
 
 import (
-	"errors"
 	"net"
 	"strconv"
+	"strings"
 	"time"
+
+	"github.com/pkg/errors"
 
 	"github.com/quickfixgo/quickfix/config"
 	"github.com/quickfixgo/quickfix/datadictionary"
-	"github.com/quickfixgo/quickfix/enum"
 	"github.com/quickfixgo/quickfix/internal"
 )
 
@@ -31,22 +47,22 @@ var dayLookup = map[string]time.Weekday{
 }
 
 var applVerIDLookup = map[string]string{
-	enum.BeginStringFIX40: "2",
-	enum.BeginStringFIX41: "3",
-	enum.BeginStringFIX42: "4",
-	enum.BeginStringFIX43: "5",
-	enum.BeginStringFIX44: "6",
-	"FIX.5.0":             "7",
-	"FIX.5.0SP1":          "8",
-	"FIX.5.0SP2":          "9",
+	BeginStringFIX40: "2",
+	BeginStringFIX41: "3",
+	BeginStringFIX42: "4",
+	BeginStringFIX43: "5",
+	BeginStringFIX44: "6",
+	"FIX.5.0":        "7",
+	"FIX.5.0SP1":     "8",
+	"FIX.5.0SP2":     "9",
 }
 
 type sessionFactory struct {
-	//True if building sessions that initiate logon
+	// True if building sessions that initiate logon.
 	BuildInitiators bool
 }
 
-//Creates Session, associates with internal session registry
+// Creates Session, associates with internal session registry.
 func (f sessionFactory) createSession(
 	sessionID SessionID, storeFactory MessageStoreFactory, settings *SessionSettings,
 	logFactory LogFactory, application Application,
@@ -77,6 +93,12 @@ func (f sessionFactory) newSession(
 		}
 	}
 
+	if settings.HasSetting(config.RejectInvalidMessage) {
+		if validatorSettings.RejectInvalidMessage, err = settings.BoolSetting(config.RejectInvalidMessage); err != nil {
+			return
+		}
+	}
+
 	if sessionID.IsFIXT() {
 		if s.DefaultApplVerID, err = settings.Setting(config.DefaultApplVerID); err != nil {
 			return
@@ -86,7 +108,7 @@ func (f sessionFactory) newSession(
 			s.DefaultApplVerID = applVerID
 		}
 
-		//If the transport or app data dictionary setting is set, the other also needs to be set.
+		// If the transport or app data dictionary setting is set, the other also needs to be set.
 		if settings.HasSetting(config.TransportDataDictionary) || settings.HasSetting(config.AppDataDictionary) {
 			var transportDataDictionaryPath, appDataDictionaryPath string
 			if transportDataDictionaryPath, err = settings.Setting(config.TransportDataDictionary); err != nil {
@@ -97,16 +119,23 @@ func (f sessionFactory) newSession(
 				return
 			}
 
-			var transportDataDictionary, appDataDictionary *datadictionary.DataDictionary
-			if transportDataDictionary, err = datadictionary.Parse(transportDataDictionaryPath); err != nil {
+			if s.transportDataDictionary, err = datadictionary.Parse(transportDataDictionaryPath); err != nil {
+				err = errors.Wrapf(
+					err, "problem parsing XML datadictionary path '%v' for setting '%v",
+					settings.settings[config.TransportDataDictionary], config.TransportDataDictionary,
+				)
 				return
 			}
 
-			if appDataDictionary, err = datadictionary.Parse(appDataDictionaryPath); err != nil {
+			if s.appDataDictionary, err = datadictionary.Parse(appDataDictionaryPath); err != nil {
+				err = errors.Wrapf(
+					err, "problem parsing XML datadictionary path '%v' for setting '%v",
+					settings.settings[config.AppDataDictionary], config.AppDataDictionary,
+				)
 				return
 			}
 
-			s.validator = &fixtValidator{transportDataDictionary, appDataDictionary, validatorSettings}
+			s.Validator = NewValidator(validatorSettings, s.appDataDictionary, s.transportDataDictionary)
 		}
 	} else if settings.HasSetting(config.DataDictionary) {
 		var dataDictionaryPath string
@@ -114,12 +143,15 @@ func (f sessionFactory) newSession(
 			return
 		}
 
-		var dataDictionary *datadictionary.DataDictionary
-		if dataDictionary, err = datadictionary.Parse(dataDictionaryPath); err != nil {
+		if s.appDataDictionary, err = datadictionary.Parse(dataDictionaryPath); err != nil {
+			err = errors.Wrapf(
+				err, "problem parsing XML datadictionary path '%v' for setting '%v",
+				settings.settings[config.DataDictionary], config.DataDictionary,
+			)
 			return
 		}
 
-		s.validator = &fixValidator{dataDictionary, validatorSettings}
+		s.Validator = NewValidator(validatorSettings, s.appDataDictionary, nil)
 	}
 
 	if settings.HasSetting(config.ResetOnLogon) {
@@ -140,6 +172,12 @@ func (f sessionFactory) newSession(
 		}
 	}
 
+	if settings.HasSetting(config.ResetOnDisconnect) {
+		if s.ResetOnDisconnect, err = settings.BoolSetting(config.ResetOnDisconnect); err != nil {
+			return
+		}
+	}
+
 	if settings.HasSetting(config.EnableLastMsgSeqNumProcessed) {
 		if s.EnableLastMsgSeqNumProcessed, err = settings.BoolSetting(config.EnableLastMsgSeqNumProcessed); err != nil {
 			return
@@ -153,6 +191,22 @@ func (f sessionFactory) newSession(
 		}
 
 		s.SkipCheckLatency = !doCheckLatency
+	}
+
+	if !settings.HasSetting(config.MaxLatency) {
+		s.MaxLatency = 120 * time.Second
+	} else {
+		var maxLatency int
+		if maxLatency, err = settings.IntSetting(config.MaxLatency); err != nil {
+			return
+		}
+
+		if maxLatency <= 0 {
+			err = errors.New("MaxLatency must be a positive integer")
+			return
+		}
+
+		s.MaxLatency = time.Duration(maxLatency) * time.Second
 	}
 
 	if settings.HasSetting(config.ResendRequestChunkSize) {
@@ -173,10 +227,18 @@ func (f sessionFactory) newSession(
 
 		var start, end internal.TimeOfDay
 		if start, err = internal.ParseTimeOfDay(startTimeStr); err != nil {
+			err = errors.Wrapf(
+				err, "problem parsing time of day '%v' for setting '%v",
+				settings.settings[config.StartTime], config.StartTime,
+			)
 			return
 		}
 
 		if end, err = internal.ParseTimeOfDay(endTimeStr); err != nil {
+			err = errors.Wrapf(
+				err, "problem parsing time of day '%v' for setting '%v",
+				settings.settings[config.EndTime], config.EndTime,
+			)
 			return
 		}
 
@@ -189,13 +251,46 @@ func (f sessionFactory) newSession(
 
 			loc, err = time.LoadLocation(locStr)
 			if err != nil {
+				err = errors.Wrapf(
+					err, "problem parsing time zone '%v' for setting '%v",
+					settings.settings[config.TimeZone], config.TimeZone,
+				)
 				return
 			}
 		}
 
 		if !settings.HasSetting(config.StartDay) && !settings.HasSetting(config.EndDay) {
-			s.SessionTime = internal.NewTimeRangeInLocation(start, end, loc)
+			var weekdays []time.Weekday
+			if settings.HasSetting(config.Weekdays) {
+				var weekdaysStr string
+				if weekdaysStr, err = settings.Setting(config.Weekdays); err != nil {
+					return
+				}
+
+				dayStrs := strings.Split(weekdaysStr, ",")
+
+				for _, dayStr := range dayStrs {
+					day, ok := dayLookup[dayStr]
+					if !ok {
+						err = IncorrectFormatForSetting{Setting: config.Weekdays, Value: weekdaysStr}
+						return
+					}
+					weekdays = append(weekdays, day)
+				}
+			}
+
+			var sessionTime *internal.TimeRange
+			sessionTime, err = internal.NewTimeRangeInLocation(start, end, weekdays, loc)
+			if err != nil {
+				return
+			}
+			s.SessionTime = sessionTime
 		} else {
+			if settings.HasSetting(config.Weekdays) {
+				err = errors.New("Weekdays cannot be specified with StartDay/EndDay")
+				return
+			}
+
 			var startDayStr, endDayStr string
 			if startDayStr, err = settings.Setting(config.StartDay); err != nil {
 				return
@@ -222,14 +317,52 @@ func (f sessionFactory) newSession(
 				return
 			}
 
-			s.SessionTime = internal.NewWeekRangeInLocation(start, end, startDay, endDay, loc)
+			var sessionTime *internal.TimeRange
+			sessionTime, err = internal.NewWeekRangeInLocation(start, end, startDay, endDay, loc)
+			if err != nil {
+				return
+			}
+			s.SessionTime = sessionTime
 		}
+	}
+
+	if settings.HasSetting(config.TimeStampPrecision) {
+		var precisionStr string
+		if precisionStr, err = settings.Setting(config.TimeStampPrecision); err != nil {
+			return
+		}
+
+		switch precisionStr {
+		case "SECONDS":
+			s.timestampPrecision = Seconds
+		case "MILLIS":
+			s.timestampPrecision = Millis
+		case "MICROS":
+			s.timestampPrecision = Micros
+		case "NANOS":
+			s.timestampPrecision = Nanos
+
+		default:
+			err = IncorrectFormatForSetting{Setting: config.TimeStampPrecision, Value: precisionStr}
+			return
+		}
+	}
+
+	if settings.HasSetting(config.PersistMessages) {
+		var persistMessages bool
+		if persistMessages, err = settings.BoolSetting(config.PersistMessages); err != nil {
+			return
+		}
+
+		s.DisableMessagePersist = !persistMessages
 	}
 
 	if f.BuildInitiators {
 		if err = f.buildInitiatorSettings(s, settings); err != nil {
 			return
 		}
+	} else if err = f.buildAcceptorSettings(s, settings); err != nil {
+		return
 	}
 
 	if s.log, err = logFactory.CreateSessionLog(s.sessionID); err != nil {
@@ -247,32 +380,75 @@ func (f sessionFactory) newSession(
 	return
 }
 
+func (f sessionFactory) buildAcceptorSettings(session *session, settings *SessionSettings) error {
+	if err := f.buildHeartBtIntSettings(session, settings, false); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (f sessionFactory) buildInitiatorSettings(session *session, settings *SessionSettings) error {
 	session.InitiateLogon = true
 
-	heartBtInt, err := settings.IntSetting(config.HeartBtInt)
-	if err != nil {
+	if err := f.buildHeartBtIntSettings(session, settings, true); err != nil {
 		return err
 	}
 
-	if heartBtInt <= 0 {
-		return errors.New("Heartbeat must be greater than zero")
-	}
-	session.HeartBtInt = time.Duration(heartBtInt) * time.Second
-
 	session.ReconnectInterval = 30 * time.Second
 	if settings.HasSetting(config.ReconnectInterval) {
-
-		interval, err := settings.IntSetting(config.ReconnectInterval)
+		interval, err := settings.DurationSetting(config.ReconnectInterval)
 		if err != nil {
-			return err
+			intervalInt, err := settings.IntSetting(config.ReconnectInterval)
+			if err != nil {
+				return err
+			}
+
+			session.ReconnectInterval = time.Duration(intervalInt) * time.Second
+		} else {
+			session.ReconnectInterval = interval
 		}
 
-		if interval <= 0 {
+		if session.ReconnectInterval <= 0 {
 			return errors.New("ReconnectInterval must be greater than zero")
 		}
+	}
 
-		session.ReconnectInterval = time.Duration(interval) * time.Second
+	session.LogoutTimeout = 2 * time.Second
+	if settings.HasSetting(config.LogoutTimeout) {
+		timeout, err := settings.DurationSetting(config.LogoutTimeout)
+		if err != nil {
+			timeoutInt, err := settings.IntSetting(config.LogoutTimeout)
+			if err != nil {
+				return err
+			}
+
+			session.LogoutTimeout = time.Duration(timeoutInt) * time.Second
+		} else {
+			session.LogoutTimeout = timeout
+		}
+
+		if session.LogoutTimeout <= 0 {
+			return errors.New("LogonTimeout must be greater than zero")
+		}
+	}
+
+	session.LogonTimeout = 10 * time.Second
+	if settings.HasSetting(config.LogonTimeout) {
+		timeout, err := settings.DurationSetting(config.LogonTimeout)
+		if err != nil {
+			timeoutInt, err := settings.IntSetting(config.LogonTimeout)
+			if err != nil {
+				return err
+			}
+
+			session.LogonTimeout = time.Duration(timeoutInt) * time.Second
+		} else {
+			session.LogonTimeout = timeout
+		}
+
+		if session.LogonTimeout <= 0 {
+			return errors.New("LogonTimeout must be greater than zero")
+		}
 	}
 
 	return f.configureSocketConnectAddress(session, settings)
@@ -307,4 +483,24 @@ func (f sessionFactory) configureSocketConnectAddress(session *session, settings
 		session.SocketConnectAddress = append(session.SocketConnectAddress, net.JoinHostPort(socketConnectHost, socketConnectPort))
 		i++
 	}
+}
+
+func (f sessionFactory) buildHeartBtIntSettings(session *session, settings *SessionSettings, mustProvide bool) (err error) {
+	if settings.HasSetting(config.HeartBtIntOverride) {
+		if session.HeartBtIntOverride, err = settings.BoolSetting(config.HeartBtIntOverride); err != nil {
+			return
+		}
+	}
+
+	if session.HeartBtIntOverride || mustProvide {
+		var heartBtInt int
+		if heartBtInt, err = settings.IntSetting(config.HeartBtInt); err != nil {
+			return
+		} else if heartBtInt <= 0 {
+			err = errors.New("Heartbeat must be greater than zero")
+			return
+		}
+		session.HeartBtInt = time.Duration(heartBtInt) * time.Second
+	}
+	return
 }

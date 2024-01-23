@@ -1,3 +1,18 @@
+// Copyright (c) quickfixengine.org  All rights reserved.
+//
+// This file may be distributed under the terms of the quickfixengine.org
+// license as defined by quickfixengine.org and appearing in the file
+// LICENSE included in the packaging of this file.
+//
+// This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING
+// THE WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A
+// PARTICULAR PURPOSE.
+//
+// See http://www.quickfixengine.org/LICENSE for licensing information.
+//
+// Contact ask@quickfixengine.org if any conditions of this licensing
+// are not clear to you.
+
 package quickfix
 
 import (
@@ -5,19 +20,18 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/quickfixgo/quickfix/enum"
 	"github.com/stretchr/testify/suite"
 )
 
 type MessageRouterTestSuite struct {
 	suite.Suite
 	*MessageRouter
-	msg             Message
+	msg             *Message
 	sessionID       SessionID
 	returnReject    MessageRejectError
 	routedBy        string
 	routedSessionID SessionID
-	routedMessage   Message
+	routedMessage   *Message
 }
 
 func TestMessageRouterTestSuite(t *testing.T) {
@@ -28,7 +42,7 @@ func (suite *MessageRouterTestSuite) givenTheRoute(beginString, msgType string) 
 	suite.AddRoute(
 		beginString,
 		msgType,
-		func(msg Message, sessionID SessionID) MessageRejectError {
+		func(msg *Message, sessionID SessionID) MessageRejectError {
 			suite.routedBy = fmt.Sprintf("%v:%v", beginString, msgType)
 			suite.routedSessionID = sessionID
 			suite.routedMessage = msg
@@ -39,7 +53,7 @@ func (suite *MessageRouterTestSuite) givenTheRoute(beginString, msgType string) 
 }
 
 func (suite *MessageRouterTestSuite) givenTheMessage(msgBytes []byte) {
-	err := ParseMessage(&suite.msg, bytes.NewBuffer(msgBytes))
+	err := ParseMessage(suite.msg, bytes.NewBuffer(msgBytes))
 	suite.Nil(err)
 
 	var beginString FIXString
@@ -87,7 +101,7 @@ func (suite *MessageRouterTestSuite) resetRouter() {
 	suite.MessageRouter = NewMessageRouter()
 	suite.routedBy = ""
 	suite.routedSessionID = SessionID{}
-	suite.routedMessage = Message{}
+	suite.routedMessage = &Message{}
 	suite.returnReject = nil
 }
 
@@ -124,70 +138,70 @@ func (suite *MessageRouterTestSuite) TestNoRouteWhitelistedMessageTypes() {
 }
 
 func (suite *MessageRouterTestSuite) TestSimpleRoute() {
-	suite.givenTheRoute(string(enum.BeginStringFIX42), "D")
-	suite.givenTheRoute(string(enum.BeginStringFIXT11), "A")
+	suite.givenTheRoute(string(BeginStringFIX42), "D")
+	suite.givenTheRoute(string(BeginStringFIXT11), "A")
 
 	suite.givenAFIX42NewOrderSingle()
 	rej := suite.Route(suite.msg, suite.sessionID)
 
-	suite.verifyMessageRoutedBy(string(enum.BeginStringFIX42), "D")
+	suite.verifyMessageRoutedBy(string(BeginStringFIX42), "D")
 	suite.Nil(rej)
 }
 
 func (suite *MessageRouterTestSuite) TestSimpleRouteWithReject() {
-	suite.givenTheRoute(string(enum.BeginStringFIX42), "D")
-	suite.givenTheRoute(string(enum.BeginStringFIXT11), "A")
+	suite.givenTheRoute(string(BeginStringFIX42), "D")
+	suite.givenTheRoute(string(BeginStringFIXT11), "A")
 	suite.anticipateReject(NewMessageRejectError("some error", 5, nil))
 
 	suite.givenAFIX42NewOrderSingle()
 	rej := suite.Route(suite.msg, suite.sessionID)
-	suite.verifyMessageRoutedBy(string(enum.BeginStringFIX42), "D")
+	suite.verifyMessageRoutedBy(string(BeginStringFIX42), "D")
 	suite.Equal(suite.returnReject, rej)
 }
 
 func (suite *MessageRouterTestSuite) TestRouteFIXTAdminMessage() {
-	suite.givenTheRoute(string(enum.BeginStringFIX42), "D")
-	suite.givenTheRoute(string(enum.BeginStringFIXT11), "A")
+	suite.givenTheRoute(string(BeginStringFIX42), "D")
+	suite.givenTheRoute(string(BeginStringFIXT11), "A")
 	suite.givenAFIXTLogonMessage()
 
 	rej := suite.Route(suite.msg, suite.sessionID)
-	suite.verifyMessageRoutedBy(string(enum.BeginStringFIXT11), "A")
+	suite.verifyMessageRoutedBy(string(BeginStringFIXT11), "A")
 	suite.Nil(rej)
 }
 
 func (suite *MessageRouterTestSuite) TestRouteFIXT50AppWithApplVerID() {
-	suite.givenTheRoute(string(enum.BeginStringFIX42), "D")
-	suite.givenTheRoute(string(enum.ApplVerID_FIX50), "D")
-	suite.givenTheRoute(string(enum.ApplVerID_FIX50SP1), "D")
+	suite.givenTheRoute(BeginStringFIX42, "D")
+	suite.givenTheRoute(ApplVerIDFIX50, "D")
+	suite.givenTheRoute(ApplVerIDFIX50SP1, "D")
 
 	suite.givenTheMessage([]byte("8=FIXT.1.19=8935=D49=TW34=356=ISLD52=20160424-16:48:261128=740=160=20160424-16:48:2611=id21=310=120"))
 	rej := suite.Route(suite.msg, suite.sessionID)
-	suite.verifyMessageRoutedBy(string(enum.ApplVerID_FIX50), "D")
+	suite.verifyMessageRoutedBy(ApplVerIDFIX50, "D")
 	suite.Nil(rej)
 }
 
 func (suite *MessageRouterTestSuite) TestRouteFIXTAppWithApplVerID() {
-	suite.givenTheRoute(string(enum.BeginStringFIX42), "D")
-	suite.givenTheRoute(string(enum.ApplVerID_FIX50), "D")
-	suite.givenTheRoute(string(enum.ApplVerID_FIX50SP1), "D")
+	suite.givenTheRoute(BeginStringFIX42, "D")
+	suite.givenTheRoute(ApplVerIDFIX50, "D")
+	suite.givenTheRoute(ApplVerIDFIX50SP1, "D")
 
 	suite.givenTheMessage([]byte("8=FIXT.1.19=8935=D49=TW34=356=ISLD52=20160424-16:48:261128=840=160=20160424-16:48:2611=id21=310=120"))
 	rej := suite.Route(suite.msg, suite.sessionID)
-	suite.verifyMessageRoutedBy(string(enum.ApplVerID_FIX50SP1), "D")
+	suite.verifyMessageRoutedBy(ApplVerIDFIX50SP1, "D")
 	suite.Nil(rej)
 }
 
 func (suite *MessageRouterTestSuite) TestRouteFIXTAppWithDefaultApplVerID() {
-	suite.givenTheRoute(string(enum.BeginStringFIX42), "D")
-	suite.givenTheRoute(string(enum.ApplVerID_FIX50), "D")
-	suite.givenTheRoute(string(enum.ApplVerID_FIX50SP1), "D")
+	suite.givenTheRoute(BeginStringFIX42, "D")
+	suite.givenTheRoute(ApplVerIDFIX50, "D")
+	suite.givenTheRoute(ApplVerIDFIX50SP1, "D")
 	suite.givenTargetDefaultApplVerIDForSession(
 		"8",
-		SessionID{BeginString: string(enum.BeginStringFIXT11), SenderCompID: "ISLD", TargetCompID: "TW"},
+		SessionID{BeginString: string(BeginStringFIXT11), SenderCompID: "ISLD", TargetCompID: "TW"},
 	)
 
 	suite.givenTheMessage([]byte("8=FIXT.1.19=8235=D49=TW34=356=ISLD52=20160424-16:48:2640=160=20160424-16:48:2611=id21=310=120"))
 	rej := suite.Route(suite.msg, suite.sessionID)
-	suite.verifyMessageRoutedBy(string(enum.ApplVerID_FIX50SP1), "D")
+	suite.verifyMessageRoutedBy(ApplVerIDFIX50SP1, "D")
 	suite.Nil(rej)
 }

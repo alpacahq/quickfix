@@ -1,12 +1,27 @@
+// Copyright (c) quickfixengine.org  All rights reserved.
+//
+// This file may be distributed under the terms of the quickfixengine.org
+// license as defined by quickfixengine.org and appearing in the file
+// LICENSE included in the packaging of this file.
+//
+// This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING
+// THE WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A
+// PARTICULAR PURPOSE.
+//
+// See http://www.quickfixengine.org/LICENSE for licensing information.
+//
+// Contact ask@quickfixengine.org if any conditions of this licensing
+// are not clear to you.
+
 package quickfix
 
 import (
 	"testing"
 	"time"
 
-	"github.com/quickfixgo/quickfix/enum"
-	"github.com/quickfixgo/quickfix/internal"
 	"github.com/stretchr/testify/suite"
+
+	"github.com/quickfixgo/quickfix/internal"
 )
 
 type InSessionTestSuite struct {
@@ -38,7 +53,7 @@ func (s *InSessionTestSuite) TestLogout() {
 	s.State(latentState{})
 
 	s.LastToAdminMessageSent()
-	s.MessageType(enum.MsgType_LOGOUT, s.MockApp.lastToAdmin)
+	s.MessageType(string(msgTypeLogout), s.MockApp.lastToAdmin)
 	s.NextTargetMsgSeqNum(2)
 	s.NextSenderMsgSeqNum(2)
 }
@@ -54,7 +69,7 @@ func (s *InSessionTestSuite) TestLogoutEnableLastMsgSeqNumProcessed() {
 	s.MockApp.AssertExpectations(s.T())
 	s.LastToAdminMessageSent()
 
-	s.MessageType(enum.MsgType_LOGOUT, s.MockApp.lastToAdmin)
+	s.MessageType(string(msgTypeLogout), s.MockApp.lastToAdmin)
 	s.FieldEquals(tagLastMsgSeqNumProcessed, 1, s.MockApp.lastToAdmin.Header)
 }
 
@@ -62,7 +77,7 @@ func (s *InSessionTestSuite) TestLogoutResetOnLogout() {
 	s.session.ResetOnLogout = true
 
 	s.MockApp.On("ToApp").Return(nil)
-	s.Nil(s.queueForSend(*s.NewOrderSingle()))
+	s.Nil(s.queueForSend(s.NewOrderSingle()))
 	s.MockApp.AssertExpectations(s.T())
 
 	s.MockApp.On("FromAdmin").Return(nil)
@@ -74,7 +89,7 @@ func (s *InSessionTestSuite) TestLogoutResetOnLogout() {
 	s.State(latentState{})
 	s.LastToAppMessageSent()
 	s.LastToAdminMessageSent()
-	s.MessageType(enum.MsgType_LOGOUT, s.MockApp.lastToAdmin)
+	s.MessageType(string(msgTypeLogout), s.MockApp.lastToAdmin)
 
 	s.NextTargetMsgSeqNum(1)
 	s.NextSenderMsgSeqNum(1)
@@ -88,7 +103,7 @@ func (s *InSessionTestSuite) TestTimeoutNeedHeartbeat() {
 	s.MockApp.AssertExpectations(s.T())
 	s.State(inSession{})
 	s.LastToAdminMessageSent()
-	s.MessageType(enum.MsgType_HEARTBEAT, s.MockApp.lastToAdmin)
+	s.MessageType(string(msgTypeHeartbeat), s.MockApp.lastToAdmin)
 	s.NextSenderMsgSeqNum(2)
 }
 
@@ -99,7 +114,7 @@ func (s *InSessionTestSuite) TestTimeoutPeerTimeout() {
 	s.MockApp.AssertExpectations(s.T())
 	s.State(pendingTimeout{inSession{}})
 	s.LastToAdminMessageSent()
-	s.MessageType(enum.MsgType_TEST_REQUEST, s.MockApp.lastToAdmin)
+	s.MessageType(string(msgTypeTestRequest), s.MockApp.lastToAdmin)
 	s.NextSenderMsgSeqNum(2)
 }
 
@@ -117,7 +132,7 @@ func (s *InSessionTestSuite) TestStop() {
 	s.MockApp.AssertExpectations(s.T())
 	s.State(logoutState{})
 	s.LastToAdminMessageSent()
-	s.MessageType(enum.MsgType_LOGOUT, s.MockApp.lastToAdmin)
+	s.MessageType(string(msgTypeLogout), s.MockApp.lastToAdmin)
 
 	s.MockApp.On("OnLogout")
 	s.session.Timeout(s.session, <-s.sessionEvent)
@@ -136,7 +151,7 @@ func (s *InSessionTestSuite) TestFIXMsgInTargetTooHighEnableLastMsgSeqNumProcess
 
 	s.MockApp.AssertExpectations(s.T())
 	s.LastToAdminMessageSent()
-	s.MessageType(enum.MsgType_RESEND_REQUEST, s.MockApp.lastToAdmin)
+	s.MessageType(string(msgTypeResendRequest), s.MockApp.lastToAdmin)
 	s.FieldEquals(tagLastMsgSeqNumProcessed, 0, s.MockApp.lastToAdmin.Header)
 }
 
@@ -149,7 +164,7 @@ func (s *InSessionTestSuite) TestFIXMsgInTargetTooHigh() {
 
 	s.MockApp.AssertExpectations(s.T())
 	s.LastToAdminMessageSent()
-	s.MessageType(enum.MsgType_RESEND_REQUEST, s.MockApp.lastToAdmin)
+	s.MessageType(string(msgTypeResendRequest), s.MockApp.lastToAdmin)
 	s.FieldEquals(tagBeginSeqNo, 1, s.MockApp.lastToAdmin.Body)
 	s.FieldEquals(tagEndSeqNo, 0, s.MockApp.lastToAdmin.Body)
 
@@ -187,7 +202,7 @@ func (s *InSessionTestSuite) TestFIXMsgInTargetTooHighResendRequestChunkSize() {
 
 		s.MockApp.AssertExpectations(s.T())
 		s.LastToAdminMessageSent()
-		s.MessageType(enum.MsgType_RESEND_REQUEST, s.MockApp.lastToAdmin)
+		s.MessageType(string(msgTypeResendRequest), s.MockApp.lastToAdmin)
 		s.FieldEquals(tagBeginSeqNo, 1, s.MockApp.lastToAdmin.Body)
 		s.FieldEquals(tagEndSeqNo, test.expectedEndSeqNo, s.MockApp.lastToAdmin.Body)
 
@@ -224,7 +239,7 @@ func (s *InSessionTestSuite) TestFIXMsgInResendRequestAllAdminExpectGapFill() {
 
 	s.MockApp.AssertExpectations(s.T())
 	s.LastToAdminMessageSent()
-	s.MessageType(enum.MsgType_SEQUENCE_RESET, s.MockApp.lastToAdmin)
+	s.MessageType(string(msgTypeSequenceReset), s.MockApp.lastToAdmin)
 	s.FieldEquals(tagMsgSeqNum, 1, s.MockApp.lastToAdmin.Header)
 	s.FieldEquals(tagPossDupFlag, true, s.MockApp.lastToAdmin.Header)
 	s.FieldEquals(tagNewSeqNo, 4, s.MockApp.lastToAdmin.Body)
@@ -243,7 +258,7 @@ func (s *InSessionTestSuite) TestFIXMsgInResendRequestAllAdminThenApp() {
 	s.LastToAdminMessageSent()
 
 	s.MockApp.On("ToApp").Return(nil)
-	s.Require().Nil(s.session.send(*s.NewOrderSingle()))
+	s.Require().Nil(s.session.send(s.NewOrderSingle()))
 	s.LastToAppMessageSent()
 
 	s.MockApp.AssertNumberOfCalls(s.T(), "ToAdmin", 2)
@@ -259,18 +274,46 @@ func (s *InSessionTestSuite) TestFIXMsgInResendRequestAllAdminThenApp() {
 	s.MockApp.AssertNumberOfCalls(s.T(), "ToApp", 2)
 
 	s.LastToAdminMessageSent()
-	s.MessageType(enum.MsgType_SEQUENCE_RESET, s.MockApp.lastToAdmin)
+	s.MessageType(string(msgTypeSequenceReset), s.MockApp.lastToAdmin)
 	s.FieldEquals(tagMsgSeqNum, 1, s.MockApp.lastToAdmin.Header)
 	s.FieldEquals(tagPossDupFlag, true, s.MockApp.lastToAdmin.Header)
 	s.FieldEquals(tagNewSeqNo, 3, s.MockApp.lastToAdmin.Body)
 	s.FieldEquals(tagGapFillFlag, true, s.MockApp.lastToAdmin.Body)
 
 	s.LastToAppMessageSent()
-	s.MessageType(enum.MsgType_ORDER_SINGLE, s.MockApp.lastToApp)
+	s.MessageType("D", s.MockApp.lastToApp)
 	s.FieldEquals(tagMsgSeqNum, 3, s.MockApp.lastToApp.Header)
 	s.FieldEquals(tagPossDupFlag, true, s.MockApp.lastToApp.Header)
 
 	s.NextSenderMsgSeqNum(4)
+	s.State(inSession{})
+}
+
+func (s *InSessionTestSuite) TestFIXMsgInResendRequestNoMessagePersist() {
+	s.session.DisableMessagePersist = true
+
+	s.MockApp.On("ToApp").Return(nil)
+	s.Require().Nil(s.session.send(s.NewOrderSingle()))
+	s.LastToAppMessageSent()
+
+	s.MockApp.AssertNumberOfCalls(s.T(), "ToApp", 1)
+	s.NextSenderMsgSeqNum(2)
+
+	s.MockApp.On("FromAdmin").Return(nil)
+	s.MockApp.On("ToAdmin")
+	s.fixMsgIn(s.session, s.ResendRequest(1))
+
+	s.MockApp.AssertNumberOfCalls(s.T(), "ToAdmin", 1)
+	s.MockApp.AssertNumberOfCalls(s.T(), "ToApp", 1)
+
+	s.LastToAdminMessageSent()
+	s.MessageType(string(msgTypeSequenceReset), s.MockApp.lastToAdmin)
+	s.FieldEquals(tagMsgSeqNum, 1, s.MockApp.lastToAdmin.Header)
+	s.FieldEquals(tagPossDupFlag, true, s.MockApp.lastToAdmin.Header)
+	s.FieldEquals(tagNewSeqNo, 2, s.MockApp.lastToAdmin.Body)
+	s.FieldEquals(tagGapFillFlag, true, s.MockApp.lastToAdmin.Body)
+
+	s.NextSenderMsgSeqNum(2)
 	s.State(inSession{})
 }
 
@@ -280,7 +323,7 @@ func (s *InSessionTestSuite) TestFIXMsgInResendRequestDoNotSendApp() {
 	s.LastToAdminMessageSent()
 
 	s.MockApp.On("ToApp").Return(nil)
-	s.Require().Nil(s.session.send(*s.NewOrderSingle()))
+	s.Require().Nil(s.session.send(s.NewOrderSingle()))
 	s.LastToAppMessageSent()
 
 	s.session.Timeout(s.session, internal.NeedHeartbeat)
@@ -290,7 +333,7 @@ func (s *InSessionTestSuite) TestFIXMsgInResendRequestDoNotSendApp() {
 	s.MockApp.AssertNumberOfCalls(s.T(), "ToApp", 1)
 	s.NextSenderMsgSeqNum(4)
 
-	//NOTE: a cheat here, need to reset mock
+	// NOTE: a cheat here, need to reset mock.
 	s.MockApp = MockApp{}
 	s.MockApp.On("FromAdmin").Return(nil)
 	s.MockApp.On("ToApp").Return(ErrDoNotSend)
@@ -301,7 +344,7 @@ func (s *InSessionTestSuite) TestFIXMsgInResendRequestDoNotSendApp() {
 	s.MockApp.AssertNumberOfCalls(s.T(), "ToApp", 1)
 
 	s.LastToAdminMessageSent()
-	s.MessageType(enum.MsgType_SEQUENCE_RESET, s.MockApp.lastToAdmin)
+	s.MessageType(string(msgTypeSequenceReset), s.MockApp.lastToAdmin)
 	s.FieldEquals(tagMsgSeqNum, 1, s.MockApp.lastToAdmin.Header)
 	s.FieldEquals(tagPossDupFlag, true, s.MockApp.lastToAdmin.Header)
 	s.FieldEquals(tagNewSeqNo, 4, s.MockApp.lastToAdmin.Body)
@@ -320,7 +363,7 @@ func (s *InSessionTestSuite) TestFIXMsgInTargetTooLow() {
 	s.fixMsgIn(s.session, s.NewOrderSingle())
 	s.MockApp.AssertExpectations(s.T())
 	s.LastToAdminMessageSent()
-	s.MessageType(enum.MsgType_LOGOUT, s.MockApp.lastToAdmin)
+	s.MessageType(string(msgTypeLogout), s.MockApp.lastToAdmin)
 	s.FieldEquals(tagText, "MsgSeqNum too low, expecting 2 but received 1", s.MockApp.lastToAdmin.Body)
 	s.State(logoutState{})
 }
@@ -335,7 +378,7 @@ func (s *InSessionTestSuite) TestFIXMsgInTargetTooLowPossDup() {
 	s.fixMsgIn(s.session, nos)
 	s.MockApp.AssertExpectations(s.T())
 	s.LastToAdminMessageSent()
-	s.MessageType(enum.MsgType_REJECT, s.MockApp.lastToAdmin)
+	s.MessageType(string(msgTypeReject), s.MockApp.lastToAdmin)
 	s.FieldEquals(tagText, "Required tag missing", s.MockApp.lastToAdmin.Body)
 	s.FieldEquals(tagRefTagID, int(tagOrigSendingTime), s.MockApp.lastToAdmin.Body)
 	s.State(inSession{})

@@ -1,3 +1,18 @@
+// Copyright (c) quickfixengine.org  All rights reserved.
+//
+// This file may be distributed under the terms of the quickfixengine.org
+// license as defined by quickfixengine.org and appearing in the file
+// LICENSE included in the packaging of this file.
+//
+// This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING
+// THE WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A
+// PARTICULAR PURPOSE.
+//
+// See http://www.quickfixengine.org/LICENSE for licensing information.
+//
+// Contact ask@quickfixengine.org if any conditions of this licensing
+// are not clear to you.
+
 package quickfix
 
 import (
@@ -124,4 +139,66 @@ func TestFieldMap_BoolTypedSetAndGet(t *testing.T) {
 	s, err = fMap.GetString(2)
 	assert.Nil(t, err)
 	assert.Equal(t, "N", s)
+}
+
+func TestFieldMap_CopyInto(t *testing.T) {
+	var fMapA FieldMap
+	fMapA.initWithOrdering(headerFieldOrdering)
+	fMapA.SetString(9, "length")
+	fMapA.SetString(8, "begin")
+	fMapA.SetString(35, "msgtype")
+	fMapA.SetString(1, "a")
+	assert.Equal(t, []Tag{8, 9, 35, 1}, fMapA.sortedTags())
+
+	var fMapB FieldMap
+	fMapB.init()
+	fMapB.SetString(1, "A")
+	fMapB.SetString(3, "C")
+	fMapB.SetString(4, "D")
+	assert.Equal(t, fMapB.sortedTags(), []Tag{1, 3, 4})
+
+	fMapA.CopyInto(&fMapB)
+
+	assert.Equal(t, []Tag{8, 9, 35, 1}, fMapB.sortedTags())
+
+	// new fields
+	s, err := fMapB.GetString(35)
+	assert.Nil(t, err)
+	assert.Equal(t, "msgtype", s)
+
+	// existing fields overwritten
+	s, err = fMapB.GetString(1)
+	assert.Nil(t, err)
+	assert.Equal(t, "a", s)
+
+	// old fields cleared
+	_, err = fMapB.GetString(3)
+	assert.NotNil(t, err)
+
+	// check that ordering is overwritten
+	fMapB.SetString(2, "B")
+	assert.Equal(t, []Tag{8, 9, 35, 1, 2}, fMapB.sortedTags())
+
+	// updating the existing map doesn't affect the new
+	fMapA.init()
+	fMapA.SetString(1, "AA")
+	s, err = fMapB.GetString(1)
+	assert.Nil(t, err)
+	assert.Equal(t, "a", s)
+	fMapA.Clear()
+	s, err = fMapB.GetString(1)
+	assert.Nil(t, err)
+	assert.Equal(t, "a", s)
+}
+
+func TestFieldMap_Remove(t *testing.T) {
+	var fMap FieldMap
+	fMap.init()
+
+	fMap.SetField(1, FIXString("hello"))
+	fMap.SetField(2, FIXString("world"))
+
+	fMap.Remove(1)
+	assert.False(t, fMap.Has(1))
+	assert.True(t, fMap.Has(2))
 }

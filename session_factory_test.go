@@ -1,13 +1,28 @@
+// Copyright (c) quickfixengine.org  All rights reserved.
+//
+// This file may be distributed under the terms of the quickfixengine.org
+// license as defined by quickfixengine.org and appearing in the file
+// LICENSE included in the packaging of this file.
+//
+// This file is provided AS IS with NO WARRANTY OF ANY KIND, INCLUDING
+// THE WARRANTY OF DESIGN, MERCHANTABILITY AND FITNESS FOR A
+// PARTICULAR PURPOSE.
+//
+// See http://www.quickfixengine.org/LICENSE for licensing information.
+//
+// Contact ask@quickfixengine.org if any conditions of this licensing
+// are not clear to you.
+
 package quickfix
 
 import (
 	"testing"
 	"time"
 
-	"github.com/quickfixgo/quickfix/config"
-	"github.com/quickfixgo/quickfix/enum"
-	"github.com/quickfixgo/quickfix/internal"
 	"github.com/stretchr/testify/suite"
+
+	"github.com/quickfixgo/quickfix/config"
+	"github.com/quickfixgo/quickfix/internal"
 )
 
 type SessionFactorySuite struct {
@@ -42,12 +57,17 @@ func (s *SessionFactorySuite) TestDefaults() {
 	s.False(session.ResetOnLogon)
 	s.False(session.RefreshOnLogon)
 	s.False(session.ResetOnLogout)
+	s.False(session.ResetOnDisconnect)
 	s.Nil(session.SessionTime, "By default, start and end time unset")
 	s.Equal("", session.DefaultApplVerID)
 	s.False(session.InitiateLogon)
 	s.Equal(0, session.ResendRequestChunkSize)
 	s.False(session.EnableLastMsgSeqNumProcessed)
 	s.False(session.SkipCheckLatency)
+	s.Equal(Millis, session.timestampPrecision)
+	s.Equal(120*time.Second, session.MaxLatency)
+	s.False(session.DisableMessagePersist)
+	s.False(session.HeartBtIntOverride)
 }
 
 func (s *SessionFactorySuite) TestResetOnLogon() {
@@ -101,6 +121,23 @@ func (s *SessionFactorySuite) TestResetOnLogout() {
 	}
 }
 
+func (s *SessionFactorySuite) TestResetOnDisconnect() {
+	var tests = []struct {
+		setting  string
+		expected bool
+	}{{"Y", true}, {"N", false}}
+
+	for _, test := range tests {
+		s.SetupTest()
+		s.SessionSettings.Set(config.ResetOnDisconnect, test.setting)
+		session, err := s.newSession(s.SessionID, s.MessageStoreFactory, s.SessionSettings, s.LogFactory, s.App)
+		s.Nil(err)
+		s.NotNil(session)
+
+		s.Equal(test.expected, session.ResetOnDisconnect)
+	}
+}
+
 func (s *SessionFactorySuite) TestResendRequestChunkSize() {
 	s.SessionSettings.Set(config.ResendRequestChunkSize, "2500")
 	session, err := s.newSession(s.SessionID, s.MessageStoreFactory, s.SessionSettings, s.LogFactory, s.App)
@@ -109,7 +146,7 @@ func (s *SessionFactorySuite) TestResendRequestChunkSize() {
 	s.Equal(2500, session.ResendRequestChunkSize)
 
 	s.SessionSettings.Set(config.ResendRequestChunkSize, "notanint")
-	session, err = s.newSession(s.SessionID, s.MessageStoreFactory, s.SessionSettings, s.LogFactory, s.App)
+	_, err = s.newSession(s.SessionID, s.MessageStoreFactory, s.SessionSettings, s.LogFactory, s.App)
 	s.NotNil(err)
 }
 
@@ -154,8 +191,11 @@ func (s *SessionFactorySuite) TestStartAndEndTime() {
 	s.Nil(err)
 	s.NotNil(session.SessionTime)
 
+	var weekday []time.Weekday
+	expectedRange, err := internal.NewUTCTimeRange(internal.NewTimeOfDay(12, 0, 0), internal.NewTimeOfDay(14, 0, 0), weekday)
+	s.Nil(err)
 	s.Equal(
-		*internal.NewUTCTimeRange(internal.NewTimeOfDay(12, 0, 0), internal.NewTimeOfDay(14, 0, 0)),
+		*expectedRange,
 		*session.SessionTime,
 	)
 }
@@ -169,8 +209,45 @@ func (s *SessionFactorySuite) TestStartAndEndTimeAndTimeZone() {
 	s.Nil(err)
 	s.NotNil(session.SessionTime)
 
+	var weekday []time.Weekday
+	expectedRange, err := internal.NewTimeRangeInLocation(internal.NewTimeOfDay(12, 0, 0), internal.NewTimeOfDay(14, 0, 0), weekday, time.Local)
+	s.Nil(err)
 	s.Equal(
-		*internal.NewTimeRangeInLocation(internal.NewTimeOfDay(12, 0, 0), internal.NewTimeOfDay(14, 0, 0), time.Local),
+		*expectedRange,
+		*session.SessionTime,
+	)
+}
+
+func (s *SessionFactorySuite) TestStartAndEndTimeAndWeekdays() {
+	s.SessionSettings.Set(config.StartTime, "12:00:00")
+	s.SessionSettings.Set(config.EndTime, "14:00:00")
+	s.SessionSettings.Set(config.Weekdays, "Monday,Tuesday,Wednesday")
+	session, err := s.newSession(s.SessionID, s.MessageStoreFactory, s.SessionSettings, s.LogFactory, s.App)
+	s.Nil(err)
+	s.NotNil(session.SessionTime)
+
+	expectedRange, err := internal.NewUTCTimeRange(internal.NewTimeOfDay(12, 0, 0), internal.NewTimeOfDay(14, 0, 0), []time.Weekday{time.Monday, time.Tuesday, time.Wednesday})
+	s.Nil(err)
+	s.Equal(
+		*expectedRange,
+		*session.SessionTime,
+	)
+}
+
+func (s *SessionFactorySuite) TestStartAndEndTimeAndTimeZoneAndWeekdays() {
+	s.SessionSettings.Set(config.StartTime, "12:00:00")
+	s.SessionSettings.Set(config.EndTime, "14:00:00")
+	s.SessionSettings.Set(config.TimeZone, "Local")
+	s.SessionSettings.Set(config.Weekdays, "Mon,Tue")
+
+	session, err := s.newSession(s.SessionID, s.MessageStoreFactory, s.SessionSettings, s.LogFactory, s.App)
+	s.Nil(err)
+	s.NotNil(session.SessionTime)
+
+	expectedRange, err := internal.NewTimeRangeInLocation(internal.NewTimeOfDay(12, 0, 0), internal.NewTimeOfDay(14, 0, 0), []time.Weekday{time.Monday, time.Tuesday}, time.Local)
+	s.Nil(err)
+	s.Equal(
+		*expectedRange,
 		*session.SessionTime,
 	)
 }
@@ -195,11 +272,14 @@ func (s *SessionFactorySuite) TestStartAndEndTimeAndStartAndEndDay() {
 		s.Nil(err)
 		s.NotNil(session.SessionTime)
 
+		expectedRange, err := internal.NewUTCWeekRange(
+			internal.NewTimeOfDay(12, 0, 0), internal.NewTimeOfDay(14, 0, 0),
+			time.Sunday, time.Thursday,
+		)
+
+		s.Nil(err)
 		s.Equal(
-			*internal.NewUTCWeekRange(
-				internal.NewTimeOfDay(12, 0, 0), internal.NewTimeOfDay(14, 0, 0),
-				time.Sunday, time.Thursday,
-			),
+			*expectedRange,
 			*session.SessionTime,
 		)
 	}
@@ -216,11 +296,14 @@ func (s *SessionFactorySuite) TestStartAndEndTimeAndStartAndEndDayAndTimeZone() 
 	s.Nil(err)
 	s.NotNil(session.SessionTime)
 
+	expectedRange, err := internal.NewWeekRangeInLocation(
+		internal.NewTimeOfDay(12, 0, 0), internal.NewTimeOfDay(14, 0, 0),
+		time.Sunday, time.Thursday, time.Local,
+	)
+
+	s.Nil(err)
 	s.Equal(
-		*internal.NewWeekRangeInLocation(
-			internal.NewTimeOfDay(12, 0, 0), internal.NewTimeOfDay(14, 0, 0),
-			time.Sunday, time.Thursday, time.Local,
-		),
+		*expectedRange,
 		*session.SessionTime,
 	)
 }
@@ -259,6 +342,46 @@ func (s *SessionFactorySuite) TestInvalidTimeZone() {
 	s.NotNil(err)
 }
 
+func (s *SessionFactorySuite) TestInvalidWeekdays() {
+	s.SessionSettings.Set(config.StartTime, "12:00:00")
+	s.SessionSettings.Set(config.EndTime, "14:00:00")
+
+	testcases := []struct {
+		label string
+		input string
+	}{
+		{
+			label: "invalid day value",
+			input: "Monday,Tuesday,not valid",
+		},
+		{
+			label: "invalid separator",
+			input: "Monday;Tuesday",
+		},
+		{
+			label: "whitespace",
+			input: "Monday, Tuesday",
+		},
+		{
+			label: "trailing comma",
+			input: "Monday,",
+		},
+		{
+			label: "empty value",
+			input: "Monday,,Tuesday",
+		},
+	}
+
+	for _, testcase := range testcases {
+		s.T().Run(testcase.label, func(t *testing.T) {
+			s.SessionSettings.Set(config.Weekdays, testcase.input)
+
+			_, err := s.newSession(s.SessionID, s.MessageStoreFactory, s.SessionSettings, s.LogFactory, s.App)
+			s.NotNil(err)
+		})
+	}
+}
+
 func (s *SessionFactorySuite) TestMissingStartOrEndDay() {
 	s.SessionSettings.Set(config.StartTime, "12:00:00")
 	s.SessionSettings.Set(config.EndTime, "14:00:00")
@@ -292,8 +415,19 @@ func (s *SessionFactorySuite) TestStartOrEndDayParseError() {
 	s.NotNil(err)
 }
 
+func (s *SessionFactorySuite) TestStartEndDayWithWeekdaysError() {
+	s.SessionSettings.Set(config.StartTime, "12:00:00")
+	s.SessionSettings.Set(config.EndTime, "14:00:00")
+	s.SessionSettings.Set(config.StartDay, "Monday")
+	s.SessionSettings.Set(config.EndDay, "Wednesday")
+	s.SessionSettings.Set(config.Weekdays, "Monday,Tuesday,Wednesday")
+
+	_, err := s.newSession(s.SessionID, s.MessageStoreFactory, s.SessionSettings, s.LogFactory, s.App)
+	s.NotNil(err)
+}
+
 func (s *SessionFactorySuite) TestDefaultApplVerID() {
-	s.SessionID = SessionID{BeginString: enum.BeginStringFIXT11, TargetCompID: "TW", SenderCompID: "ISLD"}
+	s.SessionID = SessionID{BeginString: BeginStringFIXT11, TargetCompID: "TW", SenderCompID: "ISLD"}
 
 	var tests = []struct{ expected, config string }{
 		{"2", "2"},
@@ -333,12 +467,52 @@ func (s *SessionFactorySuite) TestNewSessionBuildInitiators() {
 	s.True(session.InitiateLogon)
 	s.Equal(34*time.Second, session.HeartBtInt)
 	s.Equal(30*time.Second, session.ReconnectInterval)
+	s.Equal(10*time.Second, session.LogonTimeout)
+	s.Equal(2*time.Second, session.LogoutTimeout)
 	s.Equal("127.0.0.1:5000", session.SocketConnectAddress[0])
+}
+
+func (s *SessionFactorySuite) TestNewSessionBuildAcceptors() {
+	s.sessionFactory.BuildInitiators = false
+	s.SessionSettings.Set(config.HeartBtInt, "34")
+
+	session, err := s.newSession(s.SessionID, s.MessageStoreFactory, s.SessionSettings, s.LogFactory, s.App)
+	s.Nil(err)
+	s.False(session.InitiateLogon)
+	s.Zero(session.HeartBtInt)
+	s.False(session.HeartBtIntOverride)
+
+	s.SessionSettings.Set(config.HeartBtIntOverride, "Y")
+	session, err = s.newSession(s.SessionID, s.MessageStoreFactory, s.SessionSettings, s.LogFactory, s.App)
+	s.Nil(err)
+	s.False(session.InitiateLogon)
+	s.Equal(34*time.Second, session.HeartBtInt)
+	s.True(session.HeartBtIntOverride)
 }
 
 func (s *SessionFactorySuite) TestNewSessionBuildInitiatorsValidHeartBtInt() {
 	s.sessionFactory.BuildInitiators = true
 
+	_, err := s.newSession(s.SessionID, s.MessageStoreFactory, s.SessionSettings, s.LogFactory, s.App)
+	s.NotNil(err, "HeartBtInt should be required for acceptors with override defined")
+
+	s.SessionSettings.Set(config.HeartBtInt, "not a number")
+	_, err = s.newSession(s.SessionID, s.MessageStoreFactory, s.SessionSettings, s.LogFactory, s.App)
+	s.NotNil(err, "HeartBtInt must be a number")
+
+	s.SessionSettings.Set(config.HeartBtInt, "0")
+	_, err = s.newSession(s.SessionID, s.MessageStoreFactory, s.SessionSettings, s.LogFactory, s.App)
+	s.NotNil(err, "HeartBtInt must be greater than zero")
+
+	s.SessionSettings.Set(config.HeartBtInt, "-20")
+	_, err = s.newSession(s.SessionID, s.MessageStoreFactory, s.SessionSettings, s.LogFactory, s.App)
+	s.NotNil(err, "HeartBtInt must be greater than zero")
+}
+
+func (s *SessionFactorySuite) TestNewSessionBuildAcceptorsValidHeartBtInt() {
+	s.sessionFactory.BuildInitiators = false
+
+	s.SessionSettings.Set(config.HeartBtIntOverride, "Y")
 	_, err := s.newSession(s.SessionID, s.MessageStoreFactory, s.SessionSettings, s.LogFactory, s.App)
 	s.NotNil(err, "HeartBtInt should be required for initiators")
 
@@ -377,6 +551,54 @@ func (s *SessionFactorySuite) TestNewSessionBuildInitiatorsValidReconnectInterva
 	s.SessionSettings.Set(config.ReconnectInterval, "-20")
 	_, err = s.newSession(s.SessionID, s.MessageStoreFactory, s.SessionSettings, s.LogFactory, s.App)
 	s.NotNil(err, "ReconnectInterval must be greater than zero")
+}
+
+func (s *SessionFactorySuite) TestNewSessionBuildInitiatorsValidLogoutTimeout() {
+	s.sessionFactory.BuildInitiators = true
+	s.SessionSettings.Set(config.HeartBtInt, "34")
+	s.SessionSettings.Set(config.SocketConnectHost, "127.0.0.1")
+	s.SessionSettings.Set(config.SocketConnectPort, "3000")
+
+	s.SessionSettings.Set(config.LogoutTimeout, "45")
+	session, err := s.newSession(s.SessionID, s.MessageStoreFactory, s.SessionSettings, s.LogFactory, s.App)
+	s.Nil(err)
+	s.Equal(45*time.Second, session.LogoutTimeout)
+
+	s.SessionSettings.Set(config.LogoutTimeout, "not a number")
+	_, err = s.newSession(s.SessionID, s.MessageStoreFactory, s.SessionSettings, s.LogFactory, s.App)
+	s.NotNil(err, "LogoutTimeout must be a number")
+
+	s.SessionSettings.Set(config.LogoutTimeout, "0")
+	_, err = s.newSession(s.SessionID, s.MessageStoreFactory, s.SessionSettings, s.LogFactory, s.App)
+	s.NotNil(err, "LogoutTimeout must be greater than zero")
+
+	s.SessionSettings.Set(config.LogoutTimeout, "-20")
+	_, err = s.newSession(s.SessionID, s.MessageStoreFactory, s.SessionSettings, s.LogFactory, s.App)
+	s.NotNil(err, "LogoutTimeout must be greater than zero")
+}
+
+func (s *SessionFactorySuite) TestNewSessionBuildInitiatorsValidLogonTimeout() {
+	s.sessionFactory.BuildInitiators = true
+	s.SessionSettings.Set(config.HeartBtInt, "34")
+	s.SessionSettings.Set(config.SocketConnectHost, "127.0.0.1")
+	s.SessionSettings.Set(config.SocketConnectPort, "3000")
+
+	s.SessionSettings.Set(config.LogonTimeout, "45")
+	session, err := s.newSession(s.SessionID, s.MessageStoreFactory, s.SessionSettings, s.LogFactory, s.App)
+	s.Nil(err)
+	s.Equal(45*time.Second, session.LogonTimeout)
+
+	s.SessionSettings.Set(config.LogonTimeout, "not a number")
+	_, err = s.newSession(s.SessionID, s.MessageStoreFactory, s.SessionSettings, s.LogFactory, s.App)
+	s.NotNil(err, "LogonTimeout must be a number")
+
+	s.SessionSettings.Set(config.LogonTimeout, "0")
+	_, err = s.newSession(s.SessionID, s.MessageStoreFactory, s.SessionSettings, s.LogFactory, s.App)
+	s.NotNil(err, "LogonTimeout must be greater than zero")
+
+	s.SessionSettings.Set(config.LogonTimeout, "-20")
+	_, err = s.newSession(s.SessionID, s.MessageStoreFactory, s.SessionSettings, s.LogFactory, s.App)
+	s.NotNil(err, "LogonTimeout must be greater than zero")
 }
 
 func (s *SessionFactorySuite) TestConfigureSocketConnectAddress() {
@@ -443,4 +665,65 @@ func (s *SessionFactorySuite) TestConfigureSocketConnectAddressMulti() {
 
 	err = s.configureSocketConnectAddress(session, s.SessionSettings)
 	s.NotNil(err, "must have both host and port to be valid")
+}
+
+func (s *SessionFactorySuite) TestNewSessionTimestampPrecision() {
+	s.SessionSettings.Set(config.TimeStampPrecision, "blah")
+
+	_, err := s.newSession(s.SessionID, s.MessageStoreFactory, s.SessionSettings, s.LogFactory, s.App)
+	s.NotNil(err)
+
+	var tests = []struct {
+		config    string
+		precision TimestampPrecision
+	}{
+		{"SECONDS", Seconds},
+		{"MILLIS", Millis},
+		{"MICROS", Micros},
+		{"NANOS", Nanos},
+	}
+
+	for _, test := range tests {
+		s.SessionSettings.Set(config.TimeStampPrecision, test.config)
+		session, err := s.newSession(s.SessionID, s.MessageStoreFactory, s.SessionSettings, s.LogFactory, s.App)
+		s.Nil(err)
+
+		s.Equal(session.timestampPrecision, test.precision)
+	}
+}
+
+func (s *SessionFactorySuite) TestNewSessionMaxLatency() {
+	s.SessionSettings.Set(config.MaxLatency, "not a number")
+	_, err := s.newSession(s.SessionID, s.MessageStoreFactory, s.SessionSettings, s.LogFactory, s.App)
+	s.NotNil(err, "MaxLatency must be a number")
+
+	s.SessionSettings.Set(config.MaxLatency, "-20")
+	_, err = s.newSession(s.SessionID, s.MessageStoreFactory, s.SessionSettings, s.LogFactory, s.App)
+	s.NotNil(err, "MaxLatency must be positive")
+
+	s.SessionSettings.Set(config.MaxLatency, "0")
+	_, err = s.newSession(s.SessionID, s.MessageStoreFactory, s.SessionSettings, s.LogFactory, s.App)
+	s.NotNil(err, "MaxLatency must be positive")
+
+	s.SessionSettings.Set(config.MaxLatency, "20")
+	session, err := s.newSession(s.SessionID, s.MessageStoreFactory, s.SessionSettings, s.LogFactory, s.App)
+	s.Nil(err)
+	s.Equal(session.MaxLatency, 20*time.Second)
+}
+
+func (s *SessionFactorySuite) TestPersistMessages() {
+	var tests = []struct {
+		setting  string
+		expected bool
+	}{{"Y", false}, {"N", true}}
+
+	for _, test := range tests {
+		s.SetupTest()
+		s.SessionSettings.Set(config.PersistMessages, test.setting)
+		session, err := s.newSession(s.SessionID, s.MessageStoreFactory, s.SessionSettings, s.LogFactory, s.App)
+		s.Nil(err)
+		s.NotNil(session)
+
+		s.Equal(test.expected, session.DisableMessagePersist)
+	}
 }
