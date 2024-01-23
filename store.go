@@ -46,4 +46,5 @@ type MessageStore interface {
 // The MessageStoreFactory interface is used by session to create a session specific message store.
 type MessageStoreFactory interface {
 	Create(sessionID SessionID) (MessageStore, error)
+	GetStore() MessageStore
 }

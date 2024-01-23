@@ -27,7 +27,8 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/quickfixgo/quickfix"
-	"github.com/quickfixgo/quickfix/config"
+
+	"github.com/alpacahq/quickfix/config"
 )
 
 type msgDef struct {
@@ -37,6 +38,11 @@ type msgDef struct {
 
 type fileStoreFactory struct {
 	settings *quickfix.Settings
+}
+
+func (f fileStoreFactory) GetStore() quickfix.MessageStore {
+	//TODO implement me
+	panic("implement me")
 }
 
 type fileStore struct {

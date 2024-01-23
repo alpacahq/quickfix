@@ -26,13 +26,19 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 
 	"github.com/quickfixgo/quickfix"
-	"github.com/quickfixgo/quickfix/config"
+
+	"github.com/alpacahq/quickfix/config"
 )
 
 type mongoStoreFactory struct {
 	settings           *quickfix.Settings
 	messagesCollection string
 	sessionsCollection string
+}
+
+func (f mongoStoreFactory) GetStore() quickfix.MessageStore {
+	//TODO implement me
+	panic("implement me")
 }
 
 type mongoStore struct {

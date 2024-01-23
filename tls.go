@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/quickfixgo/quickfix/config"
+	"github.com/alpacahq/quickfix/config"
 )
 
 func loadTLSConfig(settings *SessionSettings) (tlsConfig *tls.Config, err error) {

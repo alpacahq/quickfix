@@ -24,11 +24,17 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/quickfixgo/quickfix"
-	"github.com/quickfixgo/quickfix/config"
+
+	"github.com/alpacahq/quickfix/config"
 )
 
 type sqlStoreFactory struct {
 	settings *quickfix.Settings
+}
+
+func (f sqlStoreFactory) GetStore() quickfix.MessageStore {
+	//TODO implement me
+	panic("implement me")
 }
 
 type sqlStore struct {

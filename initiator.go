@@ -183,8 +183,8 @@ func (i *Initiator) handleConnection(session *session, tlsConfig *tls.Config, di
 			netConn = tlsConn
 		}
 
-		msgIn = make(chan fixIn)
-		msgOut = make(chan []byte)
+		msgIn = make(chan fixIn, 500000)
+		msgOut = make(chan []byte, 500000)
 		if err := session.connect(msgIn, msgOut); err != nil {
 			session.log.OnEventf("Failed to initiate: %v", err)
 			goto reconnect

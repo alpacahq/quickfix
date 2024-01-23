@@ -107,15 +107,22 @@ func (store *memoryStore) GetMessages(beginSeqNum, endSeqNum int) ([][]byte, err
 	return msgs, nil
 }
 
-type memoryStoreFactory struct{}
+type memoryStoreFactory struct {
+	store MessageStore
+}
 
-func (f memoryStoreFactory) Create(sessionID SessionID) (MessageStore, error) {
+func (f *memoryStoreFactory) Create(sessionID SessionID) (MessageStore, error) {
 	m := new(memoryStore)
 	if err := m.Reset(); err != nil {
 		return m, errors.Wrap(err, "reset")
 	}
+	f.store = m
 	return m, nil
 }
 
+func (f *memoryStoreFactory) GetStore() MessageStore {
+	return f.store
+}
+
 // NewMemoryStoreFactory returns a MessageStoreFactory instance that created in-memory MessageStores.
-func NewMemoryStoreFactory() MessageStoreFactory { return memoryStoreFactory{} }
+func NewMemoryStoreFactory() MessageStoreFactory { return &memoryStoreFactory{} }

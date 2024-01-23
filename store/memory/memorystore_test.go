@@ -19,9 +19,10 @@ import (
 	"testing"
 
 	"github.com/quickfixgo/quickfix"
-	"github.com/quickfixgo/quickfix/internal/testsuite"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+
+	"github.com/alpacahq/quickfix/internal/testsuite"
 )
 
 // MemoryStoreTestSuite runs all tests in the MessageStoreTestSuite against the MemoryStore implementation.
