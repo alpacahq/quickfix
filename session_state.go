@@ -87,20 +87,23 @@ func (sm *stateMachine) Incoming(session *session, m fixIn) {
 	if !sm.IsConnected() {
 		return
 	}
+	var (
+		rawBytesBuffer = m.bytes
+		rawBytes       []byte
+	)
+	if rawBytesBuffer != nil {
+		rawBytes = rawBytesBuffer.Bytes()
+	}
 
-	session.log.OnIncoming(m.bytes.Bytes())
+	session.log.OnIncoming(rawBytes)
 
 	msg := NewMessage()
-	var rawMessage []byte
-	if m.bytes != nil {
-		rawMessage = m.bytes.Bytes()
-	}
-	if rawMessage != nil && IsExecutionReport(rawMessage) {
+	if IsExecutionReport(rawBytes) {
 		msg.ReceiveTime = m.receiveTime
-		msg.rawMessage = m.bytes
+		msg.rawMessage = rawBytesBuffer
 		sm.fixMsgIn(session, msg)
 	} else {
-		if err := ParseMessageWithDataDictionary(msg, m.bytes, session.transportDataDictionary, session.appDataDictionary); err != nil {
+		if err := ParseMessageWithDataDictionary(msg, rawBytesBuffer, session.transportDataDictionary, session.appDataDictionary); err != nil {
 			session.log.OnEventf("Msg Parse Error: %v, %q", err.Error(), m.bytes)
 		} else {
 			msg.ReceiveTime = m.receiveTime
