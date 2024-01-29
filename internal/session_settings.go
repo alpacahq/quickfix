@@ -26,4 +26,6 @@ type SessionSettings struct {
 	LogoutTimeout        time.Duration
 	LogonTimeout         time.Duration
 	SocketConnectAddress []string
+
+	CleanIncomingHotPath bool
 }

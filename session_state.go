@@ -16,6 +16,7 @@
 package quickfix
 
 import (
+	"bytes"
 	"fmt"
 	"time"
 
@@ -75,20 +76,39 @@ func (sm *stateMachine) Disconnected(session *session) {
 	}
 }
 
+var msgTypeExecutionReport = []byte("\x0135=8\x01")
+
+func IsExecutionReport(m []byte) bool {
+	return bytes.Contains(m, msgTypeExecutionReport)
+}
+
 func (sm *stateMachine) Incoming(session *session, m fixIn) {
 	sm.CheckSessionTime(session, time.Now())
 	if !sm.IsConnected() {
 		return
 	}
+	var (
+		rawBytesBuffer = m.bytes
+		rawBytes       []byte
+	)
+	if rawBytesBuffer != nil {
+		rawBytes = rawBytesBuffer.Bytes()
+	}
 
-	session.log.OnIncoming(m.bytes.Bytes())
+	session.log.OnIncoming(rawBytes)
 
 	msg := NewMessage()
-	if err := ParseMessageWithDataDictionary(msg, m.bytes, session.transportDataDictionary, session.appDataDictionary); err != nil {
-		session.log.OnEventf("Msg Parse Error: %v, %q", err.Error(), m.bytes)
-	} else {
+	if session.CleanIncomingHotPath && IsExecutionReport(rawBytes) {
 		msg.ReceiveTime = m.receiveTime
+		msg.rawMessage = rawBytesBuffer
 		sm.fixMsgIn(session, msg)
+	} else {
+		if err := ParseMessageWithDataDictionary(msg, rawBytesBuffer, session.transportDataDictionary, session.appDataDictionary); err != nil {
+			session.log.OnEventf("Msg Parse Error: %v, %q", err.Error(), m.bytes)
+		} else {
+			msg.ReceiveTime = m.receiveTime
+			sm.fixMsgIn(session, msg)
+		}
 	}
 
 	session.peerTimer.Reset(time.Duration(float64(1.2) * float64(session.HeartBtInt)))

@@ -27,6 +27,16 @@ type inSession struct{ loggedOn }
 func (state inSession) String() string { return "In Session" }
 
 func (state inSession) FixMsgIn(session *session, msg *Message) sessionState {
+
+	if session.CleanIncomingHotPath && IsExecutionReport(msg.rawMessage.Bytes()) {
+		if err := session.application.FromApp(msg, session.sessionID); err != nil {
+			return handleStateError(session, err)
+		}
+		if err := session.store.IncrNextTargetMsgSeqNum(); err != nil {
+			return handleStateError(session, err)
+		}
+		return state
+	}
 	msgType, err := msg.Header.GetBytes(tagMsgType)
 	if err != nil {
 		return handleStateError(session, err)

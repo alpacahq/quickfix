@@ -68,4 +68,5 @@ const (
 	RejectInvalidMessage         string = "RejectInvalidMessage"
 	DynamicSessions              string = "DynamicSessions"
 	DynamicQualifier             string = "DynamicQualifier"
+	CleanIncomingHotPath         string = "CleanIncomingHotPath"
 )

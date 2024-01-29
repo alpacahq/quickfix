@@ -39,6 +39,11 @@ type fileStoreFactory struct {
 	settings *quickfix.Settings
 }
 
+func (f fileStoreFactory) GetStore() quickfix.MessageStore {
+	//TODO implement me
+	panic("implement me")
+}
+
 type fileStore struct {
 	sessionID          quickfix.SessionID
 	cache              quickfix.MessageStore

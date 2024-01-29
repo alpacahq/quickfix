@@ -357,6 +357,16 @@ func (f sessionFactory) newSession(
 		s.DisableMessagePersist = !persistMessages
 	}
 
+	if settings.HasSetting(config.CleanIncomingHotPath) {
+		var cleanIncomingHotPath bool
+		if cleanIncomingHotPath, err = settings.BoolSetting(config.CleanIncomingHotPath); err != nil {
+			return
+		}
+
+		s.CleanIncomingHotPath = cleanIncomingHotPath
+
+	}
+
 	if f.BuildInitiators {
 		if err = f.buildInitiatorSettings(s, settings); err != nil {
 			return

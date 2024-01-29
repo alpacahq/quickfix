@@ -799,13 +799,7 @@ func (s *session) run() {
 
 	for !s.Stopped() {
 		select {
-
-		case msg := <-s.admin:
-			s.onAdmin(msg)
-
-		case <-s.messageEvent:
-			s.SendAppMessages(s)
-
+		// Prioritizing Incoming
 		case fixIn, ok := <-s.messageIn:
 			if !ok {
 				s.Disconnected(s)
@@ -813,11 +807,27 @@ func (s *session) run() {
 				s.Incoming(s, fixIn)
 			}
 
-		case evt := <-s.sessionEvent:
-			s.Timeout(s, evt)
+		default:
+			select {
+			case msg := <-s.admin:
+				s.onAdmin(msg)
 
-		case now := <-ticker.C:
-			s.CheckSessionTime(s, now)
+			case fixIn, ok := <-s.messageIn:
+				if !ok {
+					s.Disconnected(s)
+				} else {
+					s.Incoming(s, fixIn)
+				}
+
+			case <-s.messageEvent:
+				s.SendAppMessages(s)
+
+			case evt := <-s.sessionEvent:
+				s.Timeout(s, evt)
+
+			case now := <-ticker.C:
+				s.CheckSessionTime(s, now)
+			}
 		}
 	}
 }
