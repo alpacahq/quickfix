@@ -235,12 +235,16 @@ func (s *session) queueForSend(msg *Message) error {
 
 	s.toSend = append(s.toSend, msgBytes)
 
+	s.notifyMessageOut()
+
+	return nil
+}
+
+func (s *session) notifyMessageOut() {
 	select {
 	case s.messageEvent <- true:
 	default:
 	}
-
-	return nil
 }
 
 // send will validate, persist, queue the message. If the session is logged on, send all messages in the queue.
@@ -347,10 +351,23 @@ func (s *session) persist(seqNum int, msgBytes []byte) error {
 }
 
 func (s *session) sendQueued() {
-	for _, msgBytes := range s.toSend {
-		s.sendBytes(msgBytes)
-	}
+	var (
+		blocked      bool
+		indexBlocked int
+	)
 
+	for i, msgBytes := range s.toSend {
+		blocked = s.sendBytes(msgBytes)
+		if blocked {
+			indexBlocked = i
+			break
+		}
+	}
+	if blocked {
+		s.toSend = s.toSend[indexBlocked:]
+		s.notifyMessageOut()
+		return
+	}
 	s.dropQueued()
 }
 
@@ -366,15 +383,20 @@ func (s *session) EnqueueBytesAndSend(msg []byte) {
 	s.sendQueued()
 }
 
-func (s *session) sendBytes(msg []byte) {
+func (s *session) sendBytes(msg []byte) bool {
 	if s.messageOut == nil {
 		s.log.OnEventf("Failed to send: disconnected")
-		return
+		return false
 	}
 
-	s.log.OnOutgoing(msg)
-	s.messageOut <- msg
-	s.stateTimer.Reset(s.HeartBtInt)
+	select {
+	case <-time.After(5 * time.Millisecond):
+		return true
+	case s.messageOut <- msg:
+		s.log.OnOutgoing(msg)
+		s.stateTimer.Reset(s.HeartBtInt)
+		return false
+	}
 }
 
 func (s *session) doTargetTooHigh(reject targetTooHigh) (nextState resendState, err error) {
