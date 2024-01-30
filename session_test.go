@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/quickfixgo/quickfix/internal"
+	"github.com/stretchr/testify/assert"
 
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -380,6 +381,57 @@ func (s *SessionSuite) TestCheckSessionTimeInRange() {
 			s.NextSenderMsgSeqNum(2)
 			s.NextSenderMsgSeqNum(2)
 		}
+	}
+}
+
+func BenchmarkIncoming(b *testing.B) {
+	now := time.Now().UTC()
+	var fixMsgBytes = []byte(`8=FIX.4.29=37635=834=4247243=Y49=ISLD52=` + now.Format("20060102") + `-17:47:28.05056=LPCA122=` + now.Format("20060102") + `-14:41:25.2266342316=0.99870011=009560c3d04d4204b2a14=117=5a33e495519b44af91a20=037=009560c3d04d4204b2a39=054=255=ZVZZT60=` + now.Format("20060102") + `-14:41:24.79149343875=` + now.Format("20060102") + `150=F151=0277=0423=98452=7528=P571=5a33e495519b44af91a577=97829=0852=Y856=05080=N9277=19854=N9861=009560C3D04D4204B2A10=065`)
+	message := NewMessage()
+	assert.NoError(b, ParseMessage(message, bytes.NewBuffer(fixMsgBytes)))
+
+	start, err := time.Parse("20060102-15:04:05.000000000", now.Format("20060102")+"-14:41:24.791493438")
+
+	assert.NoError(b, err)
+
+	sessionTime, err := internal.NewUTCTimeRange(
+		internal.NewTimeOfDay(start.Add(time.Duration(-10)*time.Hour).Clock()),
+		internal.NewTimeOfDay(now.Add(time.Hour).Clock()),
+		[]time.Weekday{},
+	)
+	assert.NoError(b, err)
+
+	mockApp := MockApp{}
+	mockApp.On("ToAdmin")
+	mockApp.On("OnLogout")
+	mockApp.On("FromApp").Return(nil) // This mock function call takes more than 10K ns
+
+	receiver := newMockSessionReceiver()
+
+	store := memoryStore{}
+	store.SetCreationTime(start.Add(time.Duration(-10) * time.Hour).Add(time.Minute))
+	store.IncrNextSenderMsgSeqNum()
+	store.IncrNextTargetMsgSeqNum()
+	session1 := &session{
+		sessionID:    SessionID{BeginString: "FIX.4.2", TargetCompID: "TW", SenderCompID: "ISLD"},
+		store:        &store,
+		application:  &mockApp,
+		log:          nullLog{},
+		messageOut:   receiver.sendChannel,
+		sessionEvent: make(chan internal.Event),
+	}
+	session1.SessionTime = sessionTime
+	session1.State = inSession{}
+	session1.CleanIncomingHotPath = true
+	msgBytes := message.build()
+	msg := fixIn{bytes: bytes.NewBuffer(msgBytes)}
+	session1.CheckSessionTime(session1, time.Now().UTC())
+	assert.IsType(b, inSession{}, session1.State)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		session1.Incoming(session1, msg)
 	}
 }
 
