@@ -352,18 +352,18 @@ func (s *session) persist(seqNum int, msgBytes []byte) error {
 
 func (s *session) sendQueued() {
 	var (
-		blocked      bool
+		sent         bool
 		indexBlocked int
 	)
 
 	for i, msgBytes := range s.toSend {
-		blocked = s.sendBytes(msgBytes)
-		if blocked {
+		sent = s.sendBytes(msgBytes)
+		if !sent {
 			indexBlocked = i
 			break
 		}
 	}
-	if blocked {
+	if !sent {
 		s.toSend = s.toSend[indexBlocked:]
 		s.notifyMessageOut()
 		return
@@ -390,11 +390,11 @@ func (s *session) sendBytes(msg []byte) bool {
 	}
 
 	select {
-	case <-time.After(5 * time.Millisecond):
-		return true
 	case s.messageOut <- msg:
 		s.log.OnOutgoing(msg)
 		s.stateTimer.Reset(s.HeartBtInt)
+		return true
+	default:
 		return false
 	}
 }
