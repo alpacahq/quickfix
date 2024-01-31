@@ -24,6 +24,7 @@ var msgTypeResendRequest = []byte("2")
 var msgTypeReject = []byte("3")
 var msgTypeSequenceReset = []byte("4")
 var msgTypeLogout = []byte("5")
+var msgTypeExecutionReport = []byte("\x0135=8\x01")
 
 // isAdminMessageType returns true if the message type is a session level message.
 func isAdminMessageType(m []byte) bool {
@@ -39,4 +40,8 @@ func isAdminMessageType(m []byte) bool {
 	}
 
 	return false
+}
+
+func isExecutionReport(m []byte) bool {
+	return bytes.Contains(m, msgTypeExecutionReport)
 }

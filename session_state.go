@@ -16,7 +16,6 @@
 package quickfix
 
 import (
-	"bytes"
 	"fmt"
 	"time"
 
@@ -76,12 +75,6 @@ func (sm *stateMachine) Disconnected(session *session) {
 	}
 }
 
-var msgTypeExecutionReport = []byte("\x0135=8\x01")
-
-func IsExecutionReport(m []byte) bool {
-	return bytes.Contains(m, msgTypeExecutionReport)
-}
-
 func (sm *stateMachine) Incoming(session *session, m fixIn) {
 	sm.CheckSessionTime(session, time.Now())
 	if !sm.IsConnected() {
@@ -98,7 +91,7 @@ func (sm *stateMachine) Incoming(session *session, m fixIn) {
 	session.log.OnIncoming(rawBytes)
 
 	msg := NewMessage()
-	if session.CleanIncomingHotPath && IsExecutionReport(rawBytes) {
+	if session.CleanIncomingHotPath && isExecutionReport(rawBytes) {
 		msg.ReceiveTime = m.receiveTime
 		msg.rawMessage = rawBytesBuffer
 		sm.fixMsgIn(session, msg)
