@@ -22,6 +22,7 @@ import (
 
 	"github.com/quickfixgo/quickfix/internal"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
@@ -997,3 +998,62 @@ func (suite *SessionSendTestSuite) TestDropAndSendDropsQueueWithReset() {
 	suite.LastToAdminMessageSent()
 	suite.NoMessageSent()
 }
+
+func BenchmarkIncoming(b *testing.B) {
+	now := time.Now().UTC()
+	fixMsgBytes := []byte(`8=FIX.4.29=37235=834=143=Y49=ISLD52=` + now.Format("20060102") + `-14:41:24.79156=LPCA122=` + now.Format("20060102") + `-14:41:24.7914934386=0.99870011=009560c3d04d4204b2a14=117=5a33e495519b44af91a20=037=009560c3d04d4204b2a39=054=255=ZVZZT60=` + now.Format("20060102") + `-14:41:24.79149343875=` + now.Format("20060102") + `150=F151=0277=0423=98452=7528=P571=5a33e495519b44af91a577=97829=0852=Y856=05080=N9277=19854=N9861=009560C3D04D4204B2A10=065`)
+
+	start, err := time.Parse("20060102-15:04:05.000000000", now.Format("20060102")+"-14:41:24.791493438")
+	assert.NoError(b, err)
+
+	sessionStart := start.Add(-10 * time.Hour)
+
+	sessionTime, err := internal.NewUTCTimeRange(
+		internal.NewTimeOfDay(sessionStart.Clock()),
+		internal.NewTimeOfDay(now.Add(time.Hour).Clock()),
+		[]time.Weekday{},
+	)
+	assert.NoError(b, err)
+
+	store := memoryStore{
+		creationTime: sessionStart,
+	}
+	session1 := &session{
+		sessionID:   SessionID{BeginString: "FIX.4.2", TargetCompID: "ISLD", SenderCompID: "LPCA"},
+		store:       &store,
+		application: &noopApp{},
+		log:         nullLog{},
+		stateMachine: stateMachine{
+			State: inSession{},
+		},
+		SessionSettings: internal.SessionSettings{
+			SessionTime: sessionTime,
+			MaxLatency:  12 * time.Hour,
+		},
+	}
+	session1.CheckSessionTime(session1, time.Now().UTC())
+	assert.IsType(b, inSession{}, session1.State)
+
+	message := NewMessage()
+	assert.NoError(b, ParseMessage(message, bytes.NewBuffer(fixMsgBytes)))
+	msgBytes := message.build()
+	msg := fixIn{bytes: bytes.NewBuffer(msgBytes)}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		session1.Incoming(session1, msg)
+		assert.IsType(b, inSession{}, session1.State)
+		store.targetMsgSeqNum--
+	}
+}
+
+type noopApp struct{}
+
+func (*noopApp) OnCreate(SessionID)                               {}
+func (*noopApp) OnLogon(SessionID)                                {}
+func (*noopApp) OnLogout(SessionID)                               {}
+func (*noopApp) ToAdmin(*Message, SessionID)                      {}
+func (*noopApp) FromAdmin(*Message, SessionID) MessageRejectError { return nil }
+func (*noopApp) ToApp(*Message, SessionID) error                  { return nil }
+func (*noopApp) FromApp(*Message, SessionID) MessageRejectError   { return nil }
