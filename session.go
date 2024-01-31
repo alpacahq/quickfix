@@ -351,23 +351,14 @@ func (s *session) persist(seqNum int, msgBytes []byte) error {
 }
 
 func (s *session) sendQueued() {
-	var (
-		sent         bool
-		indexBlocked int
-	)
-
 	for i, msgBytes := range s.toSend {
-		sent = s.sendBytes(msgBytes)
-		if !sent {
-			indexBlocked = i
-			break
+		if !s.sendBytes(msgBytes) {
+			s.toSend = s.toSend[i:]
+			s.notifyMessageOut()
+			return
 		}
 	}
-	if !sent {
-		s.toSend = s.toSend[indexBlocked:]
-		s.notifyMessageOut()
-		return
-	}
+
 	s.dropQueued()
 }
 
