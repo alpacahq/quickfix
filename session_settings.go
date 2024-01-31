@@ -124,9 +124,9 @@ func (s SessionSettings) BoolSetting(setting string) (bool, error) {
 	}
 
 	switch stringVal {
-	case "Y", "y", "true", "True":
+	case "Y", "y":
 		return true, nil
-	case "N", "n", "false", "False":
+	case "N", "n":
 		return false, nil
 	}
 
