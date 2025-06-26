@@ -670,6 +670,7 @@ func (s *session) checkBeginString(msg *Message) MessageRejectError {
 }
 
 func (s *session) drainMessageIn() {
+	s.log.OnEventf("Draining %d messages from inbound channel...", len(s.messageIn))
 	for {
 		select {
 		case fixInc, ok := <-s.messageIn:
@@ -752,7 +753,7 @@ func (s *session) onDisconnect() {
 
 	// s.messageIn is buffered so we need to drain it before disconnection
 	s.drainMessageIn()
-	
+
 	s.messageIn = nil
 }
 
