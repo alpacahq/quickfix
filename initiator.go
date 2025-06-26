@@ -236,7 +236,7 @@ func (i *Initiator) getInChanCapacity(sessionID SessionID, settings *SessionSett
 	}
 
 	inChanCapacityVal, err := strconv.Atoi(inChanCapacityStr)
-	if err != nil {
+	if err != nil || inChanCapacityVal < 0 {
 		i.sessions[sessionID].log.OnEventf("Invalid value for setting %s, must be a non-negative integer, will default to 0: %v", initiatorInChanCapacityConfig, err)
 		return 0
 	}
