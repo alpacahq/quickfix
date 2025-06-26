@@ -18,6 +18,7 @@ package quickfix
 import (
 	"bufio"
 	"crypto/tls"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -39,6 +40,11 @@ type Initiator struct {
 	sessionFactory
 }
 
+// note: Here we don't use "github.com/alpacahq/quickfix/config" to set the config "InitiatorInChanCapacity"
+// because we currently use "github.com/quickfixgo/quickfix/config" for the configs so it will break the dependencies
+// either way, the config can be passed through the SessionSettings map
+const initiatorInChanCapacityConfig = "InitiatorInChanCapacity"
+
 // Start Initiator.
 func (i *Initiator) Start() (err error) {
 	i.stopChan = make(chan interface{})
@@ -55,9 +61,12 @@ func (i *Initiator) Start() (err error) {
 			return
 		}
 
+		inChanCapacity := i.getInChanCapacity(sessionID, settings)
+
 		i.wg.Add(1)
+
 		go func(sessID SessionID) {
-			i.handleConnection(i.sessions[sessID], tlsConfig, dialer)
+			i.handleConnection(i.sessions[sessID], tlsConfig, dialer, inChanCapacity)
 			i.wg.Done()
 		}(sessionID)
 	}
@@ -134,7 +143,7 @@ func (i *Initiator) waitForReconnectInterval(reconnectInterval time.Duration) bo
 	return true
 }
 
-func (i *Initiator) handleConnection(session *session, tlsConfig *tls.Config, dialer proxy.Dialer) {
+func (i *Initiator) handleConnection(session *session, tlsConfig *tls.Config, dialer proxy.Dialer, inChanSize int) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -183,7 +192,7 @@ func (i *Initiator) handleConnection(session *session, tlsConfig *tls.Config, di
 			netConn = tlsConn
 		}
 
-		msgIn = make(chan fixIn)
+		msgIn = make(chan fixIn, inChanSize)
 		msgOut = make(chan []byte)
 		if err := session.connect(msgIn, msgOut); err != nil {
 			session.log.OnEventf("Failed to initiate: %v", err)
@@ -213,4 +222,24 @@ func (i *Initiator) handleConnection(session *session, tlsConfig *tls.Config, di
 			return
 		}
 	}
+}
+
+func (i *Initiator) getInChanCapacity(sessionID SessionID, settings *SessionSettings) int {
+	if !settings.HasSetting(initiatorInChanCapacityConfig) {
+		return 0
+	}
+
+	inChanCapacityStr, err := settings.Setting(initiatorInChanCapacityConfig)
+	if err != nil {
+		i.sessions[sessionID].log.OnEventf("Failed to get setting %s, will default to 0: %v", initiatorInChanCapacityConfig, err)
+		return 0
+	}
+
+	inChanCapacityVal, err := strconv.Atoi(inChanCapacityStr)
+	if err != nil {
+		i.sessions[sessionID].log.OnEventf("Invalid value for setting %s, must be a non-negative integer, will default to 0: %v", initiatorInChanCapacityConfig, err)
+		return 0
+	}
+
+	return inChanCapacityVal
 }
