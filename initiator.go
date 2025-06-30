@@ -61,12 +61,10 @@ func (i *Initiator) Start() (err error) {
 			return
 		}
 
-		inChanCapacity := i.getInChanCapacity(sessionID, settings)
-
 		i.wg.Add(1)
 
 		go func(sessID SessionID) {
-			i.handleConnection(i.sessions[sessID], tlsConfig, dialer, inChanCapacity)
+			i.handleConnection(i.sessions[sessID], tlsConfig, dialer)
 			i.wg.Done()
 		}(sessionID)
 	}
@@ -143,8 +141,11 @@ func (i *Initiator) waitForReconnectInterval(reconnectInterval time.Duration) bo
 	return true
 }
 
-func (i *Initiator) handleConnection(session *session, tlsConfig *tls.Config, dialer proxy.Dialer, inChanSize int) {
-	var wg sync.WaitGroup
+func (i *Initiator) handleConnection(session *session, tlsConfig *tls.Config, dialer proxy.Dialer) {
+	var (
+		wg             sync.WaitGroup
+		inChanCapacity = i.getInChanCapacity(session.sessionID)
+	)
 	wg.Add(1)
 	go func() {
 		session.run()
@@ -192,7 +193,7 @@ func (i *Initiator) handleConnection(session *session, tlsConfig *tls.Config, di
 			netConn = tlsConn
 		}
 
-		msgIn = make(chan fixIn, inChanSize)
+		msgIn = make(chan fixIn, inChanCapacity)
 		msgOut = make(chan []byte)
 		if err := session.connect(msgIn, msgOut); err != nil {
 			session.log.OnEventf("Failed to initiate: %v", err)
@@ -224,13 +225,14 @@ func (i *Initiator) handleConnection(session *session, tlsConfig *tls.Config, di
 	}
 }
 
-func (i *Initiator) getInChanCapacity(sessionID SessionID, settings *SessionSettings) int {
-	if !settings.HasSetting(initiatorInChanCapacityConfig) {
+func (i *Initiator) getInChanCapacity(sessionID SessionID) int {
+	if !i.settings.globalSettings.HasSetting(initiatorInChanCapacityConfig) {
 		return 0
 	}
 
-	inChanCapacityStr, err := settings.Setting(initiatorInChanCapacityConfig)
+	inChanCapacityStr, err := i.settings.globalSettings.Setting(initiatorInChanCapacityConfig)
 	if err != nil {
+		// Zero channel size means unbuffered
 		i.sessions[sessionID].log.OnEventf("Failed to get setting %s, will default to 0: %v", initiatorInChanCapacityConfig, err)
 		return 0
 	}
