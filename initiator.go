@@ -62,7 +62,6 @@ func (i *Initiator) Start() (err error) {
 		}
 
 		i.wg.Add(1)
-
 		go func(sessID SessionID) {
 			i.handleConnection(i.sessions[sessID], tlsConfig, dialer)
 			i.wg.Done()
